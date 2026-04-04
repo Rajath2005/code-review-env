@@ -1,3 +1,14 @@
+---
+title: Code Review Agent
+emoji: 🔍
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+tags:
+  - openenv
+  - reinforcement-learning
+---
 # Code Review Agent — OpenEnv Environment
 
 > An RL environment for training and evaluating AI agents on real-world Python code review tasks.
