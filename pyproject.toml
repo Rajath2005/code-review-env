@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "code-review-env"
+version = "0.1.0"
+description = "OpenEnv environment for training RL agents to perform code review"
+requires-python = ">=3.10"
+dependencies = [
+    "openenv-core",
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic>=2.0",
+    "openai",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["data*", "tasks*", "server*"]
