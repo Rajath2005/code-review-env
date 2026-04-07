@@ -11,9 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir \
     openenv-core \
     fastapi \
-    uvicorn[standard] \
-    pydantic \
-    openai
+    uvicorn \
+    openai \
+    pydantic
 
 # Copy project files
 COPY . .

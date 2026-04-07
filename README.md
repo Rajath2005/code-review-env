@@ -2,6 +2,14 @@
 
 > An RL environment for training and evaluating AI agents on real-world Python code review tasks.
 
+## Problem Statement
+
+Create a standardized RL environment where agents learn to identify bugs, fix code, and perform full reviews on Python snippets with objective grading and reproducible rewards.
+
+## Hugging Face Space
+
+Live deployment: https://BugHunter28-code-review-env.hf.space
+
 ## Why This Exists
 
 Code review is one of the most time-consuming tasks in software development. Tools like CodeRabbit and GitHub Copilot Review demonstrate massive industry demand — but **no open RL environment exists to systematically train and benchmark agents on this problem**.
@@ -86,6 +94,13 @@ class CodeReviewAction(Action):
 - Medium: proportional to test cases passed (rewards partial fixes)
 - Hard: F1-style per category + ordering bonus (rewards structured, well-prioritised output)
 
+## How Reward Works
+
+- Dense rewards with partial credit per step
+- Easy task uses bug-type keyword matching
+- Medium task scores by test-case pass rate
+- Hard task scores F1 per category plus severity ordering bonus
+
 ---
 
 ## Code Snippet Dataset
@@ -98,3 +113,9 @@ class CodeReviewAction(Action):
 | 1 | Division by zero | Safety |
 | 2 | Wrong initial value | Logic |
 | 3 | Command injection | Security |
+
+## Run Locally
+
+1. Install dependencies: `pip install -e .`
+2. Start the server: `uvicorn server.app:app --host 0.0.0.0 --port 7860`
+3. Run inference: `python inference.py`
