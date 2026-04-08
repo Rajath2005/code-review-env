@@ -7,6 +7,7 @@ Exposes the OpenEnv standard endpoints:
   GET  /state  — get current internal state
   GET  /health — liveness check (judges ping this)
   GET  /tasks  — list available tasks
+  GET  / — serves web UI (index.html)
 """
 
 import sys
@@ -15,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 

@@ -1,14 +1,3 @@
----
-title: Code Review Agent
-emoji: 🧠
-colorFrom: blue
-colorTo: green
-sdk: docker
-pinned: false
-tags:
-  - openenv
----
-
 # Code Review Agent — OpenEnv RL Benchmark
 
 > **An OpenEnv RL environment for training and benchmarking AI agents on Python code review.**
