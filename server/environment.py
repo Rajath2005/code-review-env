@@ -127,17 +127,29 @@ class CodeReviewEnvironment(Environment):
       full_review        (hard)   — full JSON audit
     """
 
-    def __init__(self):
+    def __init__(self, seed: Optional[int] = None):
+        """
+        Initialize the environment.
+
+        Args:
+            seed: Optional random seed for deterministic snippet selection.
+                  Set to 42 for reproducible evaluations.
+        """
         self._state: Optional[CodeReviewState] = None
+        self._seed = seed
+        if seed is not None:
+            random.seed(seed)
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def reset(self, task_name: str = "bug_identification") -> CodeReviewObservation:
+    def reset(self, task_name: str = "bug_identification", seed: Optional[int] = None) -> CodeReviewObservation:
         """
         Start a new episode.
 
         Args:
             task_name: one of bug_identification | bug_fixing | full_review
+            seed: Optional random seed. If provided, overrides the environment seed.
+                  (Use seed=42 for deterministic evaluations)
 
         Returns:
             Initial observation with a random code snippet.
@@ -147,6 +159,12 @@ class CodeReviewEnvironment(Environment):
                 f"Unknown task '{task_name}'. "
                 f"Valid options: {VALID_TASKS}"
             )
+
+        # Apply seed if provided (allows per-reset override)
+        if seed is not None:
+            random.seed(seed)
+        elif self._seed is not None:
+            random.seed(self._seed)
 
         snippet = random.choice(SNIPPETS)
 
