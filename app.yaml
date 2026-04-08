@@ -1,0 +1,16 @@
+title: Code Review Agent — OpenEnv
+description: RL environment for training AI agents on Python code review
+sdk: docker
+docker:
+  dockerfile: ./Dockerfile
+app_port: 7860
+env:
+  - name: API_BASE_URL
+    description: The API endpoint for the LLM
+    default: https://router.huggingface.co/v1
+  - name: MODEL_NAME
+    description: The model identifier to use for inference
+    default: Qwen/Qwen2.5-72B-Instruct
+  - name: HF_TOKEN
+    description: Your Hugging Face API key
+    required: true
