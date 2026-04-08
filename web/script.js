@@ -1,4 +1,14 @@
-const API_BASE_URL = "https://bughunter28-code-review-env.hf.space";
+// Determine API base URL at runtime
+// If running on HF Space, use HF Space URL
+// If running locally, use current origin
+const isHFSpace = window.location.hostname.includes("hf.space");
+const API_BASE_URL = isHFSpace 
+  ? window.location.origin 
+  : window.location.origin;
+
+// Log current environment
+console.log(`🚀 App running at: ${API_BASE_URL}`);
+console.log(`📍 Hostname: ${window.location.hostname}`);
 
 const startButton = document.getElementById("start-review");
 const viewTasksButton = document.getElementById("view-tasks");

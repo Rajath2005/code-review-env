@@ -46,6 +46,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve static files (web UI)
+web_dir = os.path.join(os.path.dirname(__file__), "..", "web")
+if os.path.exists(web_dir):
+    app.mount("/static", StaticFiles(directory=web_dir), name="static")
+
 # Single shared environment instance per server process
 env = CodeReviewEnvironment()
 
@@ -141,6 +146,17 @@ async def state():
         return s.model_dump()
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/", tags=["ui"])
+async def root():
+    """Serve the web UI (index.html)."""
+    from fastapi.responses import FileResponse
+    html_path = os.path.join(os.path.dirname(__file__), "..", "web", "index.html")
+    if os.path.exists(html_path):
+        return FileResponse(html_path, media_type="text/html")
+    else:
+        raise HTTPException(status_code=404, detail="UI not found")
 
 
 # ── Dev server ────────────────────────────────────────────────────────────────
