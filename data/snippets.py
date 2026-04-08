@@ -524,4 +524,521 @@ SNIPPETS = [
             ],
         },
     },
+    {
+        "id": 15,
+        "code": (
+            "def parse_config(config_text):\n"
+            "    import json\n"
+            "    return eval(config_text)\n"
+            "\n"
+            "def get_threshold(config_text):\n"
+            "    config = parse_config(config_text)\n"
+            "    return config.get('threshold', 0)"
+        ),
+        "bug_type": "eval misuse",
+        "bug_type_aliases": ["eval injection", "unsafe eval", "code injection via eval"],
+        "fixed_code": (
+            "def parse_config(config_text):\n"
+            "    import json\n"
+            "    data = json.loads(config_text)\n"
+            "    if not isinstance(data, dict):\n"
+            "        raise ValueError('Config must be a JSON object')\n"
+            "    return data\n"
+            "\n"
+            "def get_threshold(config_text):\n"
+            "    config = parse_config(config_text)\n"
+            "    return config.get('threshold', 0)"
+        ),
+        "test_cases": [
+            ("{\"threshold\": 5}", 5),
+            ("{}", 0),
+        ],
+        "review": {
+            "bugs": [],
+            "security_issues": [
+                {"line": 3, "severity": "high", "description": "eval on untrusted config_text enables arbitrary code execution"},
+            ],
+            "style_violations": [
+                {"line": 2, "severity": "low", "description": "Import should be at module scope for clarity"},
+            ],
+        },
+    },
+    {
+        "id": 16,
+        "code": (
+            "import os\n"
+            "\n"
+            "def read_user_file(base_dir, filename):\n"
+            "    path = os.path.join(base_dir, filename)\n"
+            "    with open(path, 'r') as f:\n"
+            "        return f.read()"
+        ),
+        "bug_type": "unsafe file handling",
+        "bug_type_aliases": ["path traversal", "unsafe path join", "missing path validation"],
+        "fixed_code": (
+            "import os\n"
+            "\n"
+            "def read_user_file(base_dir, filename):\n"
+            "    base = os.path.abspath(base_dir)\n"
+            "    target = os.path.abspath(os.path.join(base, filename))\n"
+            "    if not target.startswith(base + os.sep):\n"
+            "        raise ValueError('Invalid filename')\n"
+            "    with open(target, 'r') as f:\n"
+            "        return f.read()"
+        ),
+        "test_cases": [],
+        "review": {
+            "bugs": [],
+            "security_issues": [
+                {"line": 4, "severity": "high", "description": "User-controlled filename can escape base_dir via path traversal"},
+            ],
+            "style_violations": [
+                {"line": 4, "severity": "low", "description": "Use pathlib for clearer path handling"},
+            ],
+        },
+    },
+    {
+        "id": 17,
+        "code": (
+            "import os\n"
+            "\n"
+            "def ping_host(host):\n"
+            "    cmd = f'ping -c 1 {host}'\n"
+            "    return os.system(cmd)"
+        ),
+        "bug_type": "command injection",
+        "bug_type_aliases": ["shell injection", "os command injection", "unsanitised command"],
+        "fixed_code": (
+            "import subprocess\n"
+            "\n"
+            "def ping_host(host):\n"
+            "    if not host.replace('.', '').isdigit():\n"
+            "        raise ValueError('Invalid host')\n"
+            "    result = subprocess.run(['ping', '-c', '1', host], capture_output=True, text=True)\n"
+            "    return result.returncode"
+        ),
+        "test_cases": [],
+        "review": {
+            "bugs": [],
+            "security_issues": [
+                {"line": 4, "severity": "high", "description": "os.system with interpolated host allows command injection"},
+            ],
+            "style_violations": [
+                {"line": 4, "severity": "low", "description": "Prefer subprocess.run with shell=False"},
+            ],
+        },
+    },
+    {
+        "id": 18,
+        "code": (
+            "import sqlite3\n"
+            "\n"
+            "def get_user(conn, username):\n"
+            "    cursor = conn.cursor()\n"
+            "    cursor.execute(f\"SELECT id, email FROM users WHERE username = '{username}'\")\n"
+            "    return cursor.fetchone()"
+        ),
+        "bug_type": "sql injection",
+        "bug_type_aliases": ["unsanitised sql", "string formatting in sql", "parameterised query missing"],
+        "fixed_code": (
+            "import sqlite3\n"
+            "\n"
+            "def get_user(conn, username):\n"
+            "    cursor = conn.cursor()\n"
+            "    cursor.execute(\"SELECT id, email FROM users WHERE username = ?\", (username,))\n"
+            "    return cursor.fetchone()"
+        ),
+        "test_cases": [],
+        "review": {
+            "bugs": [],
+            "security_issues": [
+                {"line": 5, "severity": "high", "description": "String formatting in SQL enables injection of arbitrary queries"},
+            ],
+            "style_violations": [
+                {"line": 4, "severity": "low", "description": "Reuse a cursor or context manager for efficiency"},
+            ],
+        },
+    },
+    {
+        "id": 19,
+        "code": (
+            "def average_latency(samples):\n"
+            "    total = sum(samples)\n"
+            "    return total / len(samples)\n"
+            "\n"
+            "def report_latency(samples):\n"
+            "    avg = average_latency(samples)\n"
+            "    return {'avg_ms': round(avg, 2), 'count': len(samples)}"
+        ),
+        "bug_type": "division by zero",
+        "bug_type_aliases": ["zero division error", "missing empty check", "empty list not handled"],
+        "fixed_code": (
+            "def average_latency(samples):\n"
+            "    if not samples:\n"
+            "        return 0.0\n"
+            "    total = sum(samples)\n"
+            "    return total / len(samples)\n"
+            "\n"
+            "def report_latency(samples):\n"
+            "    avg = average_latency(samples)\n"
+            "    return {'avg_ms': round(avg, 2), 'count': len(samples)}"
+        ),
+        "test_cases": [
+            ([100, 200, 300], {'avg_ms': 200.0, 'count': 3}),
+            ([], {'avg_ms': 0.0, 'count': 0}),
+        ],
+        "review": {
+            "bugs": [
+                {"line": 3, "severity": "high", "description": "len(samples) can be zero, causing ZeroDivisionError"},
+            ],
+            "security_issues": [],
+            "style_violations": [
+                {"line": 1, "severity": "low", "description": "Consider documenting expected units (ms)"},
+            ],
+        },
+    },
+    {
+        "id": 20,
+        "code": (
+            "def find_account(accounts, account_id):\n"
+            "    for acc in accounts:\n"
+            "        if acc['id'] == account_id:\n"
+            "            return acc\n"
+            "    return None\n"
+            "\n"
+            "def get_account_email(accounts, account_id):\n"
+            "    account = find_account(accounts, account_id)\n"
+            "    return account['email']"
+        ),
+        "bug_type": "null pointer dereference",
+        "bug_type_aliases": ["none dereference", "missing null check", "typeerror on none"],
+        "fixed_code": (
+            "def find_account(accounts, account_id):\n"
+            "    for acc in accounts:\n"
+            "        if acc['id'] == account_id:\n"
+            "            return acc\n"
+            "    return None\n"
+            "\n"
+            "def get_account_email(accounts, account_id):\n"
+            "    account = find_account(accounts, account_id)\n"
+            "    if account is None:\n"
+            "        return None\n"
+            "    return account['email']"
+        ),
+        "test_cases": [
+            (([{"id": 1, "email": "a@b.com"}], 1), "a@b.com"),
+            (([{"id": 1, "email": "a@b.com"}], 2), None),
+        ],
+        "review": {
+            "bugs": [
+                {"line": 9, "severity": "high", "description": "account can be None, causing TypeError when indexing"},
+            ],
+            "security_issues": [],
+            "style_violations": [
+                {"line": 8, "severity": "low", "description": "Return a clear error or exception when account is missing"},
+            ],
+        },
+    },
+    {
+        "id": 21,
+        "code": (
+            "def has_increasing_pair(values):\n"
+            "    for i in range(len(values)):\n"
+            "        if values[i + 1] > values[i]:\n"
+            "            return True\n"
+            "    return False"
+        ),
+        "bug_type": "index out of range",
+        "bug_type_aliases": ["off by one", "range error", "index error"],
+        "fixed_code": (
+            "def has_increasing_pair(values):\n"
+            "    for i in range(len(values) - 1):\n"
+            "        if values[i + 1] > values[i]:\n"
+            "            return True\n"
+            "    return False"
+        ),
+        "test_cases": [
+            ([1, 2], True),
+            ([2, 1], False),
+            ([1], False),
+            ([], False),
+        ],
+        "review": {
+            "bugs": [
+                {"line": 3, "severity": "high", "description": "values[i + 1] reads past end on last iteration"},
+            ],
+            "security_issues": [],
+            "style_violations": [
+                {"line": 2, "severity": "low", "description": "Handle empty lists explicitly for clarity"},
+            ],
+        },
+    },
+    {
+        "id": 22,
+        "code": (
+            "def get_page(items, page, size):\n"
+            "    start = page * size\n"
+            "    end = (page + 1) * size\n"
+            "    page_items = []\n"
+            "    for i in range(start, end + 1):\n"
+            "        if i < len(items):\n"
+            "            page_items.append(items[i])\n"
+            "    return page_items"
+        ),
+        "bug_type": "incorrect loop bounds",
+        "bug_type_aliases": ["off by one", "inclusive range", "loop bound error"],
+        "fixed_code": (
+            "def get_page(items, page, size):\n"
+            "    start = page * size\n"
+            "    end = (page + 1) * size\n"
+            "    page_items = []\n"
+            "    for i in range(start, end):\n"
+            "        if i < len(items):\n"
+            "            page_items.append(items[i])\n"
+            "    return page_items"
+        ),
+        "test_cases": [
+            ((list(range(10)), 0, 5), [0, 1, 2, 3, 4]),
+            ((list(range(10)), 1, 5), [5, 6, 7, 8, 9]),
+        ],
+        "review": {
+            "bugs": [
+                {"line": 5, "severity": "medium", "description": "range(start, end + 1) includes an extra element"},
+            ],
+            "security_issues": [],
+            "style_violations": [
+                {"line": 4, "severity": "low", "description": "Use slicing for simpler pagination"},
+            ],
+        },
+    },
+    {
+        "id": 23,
+        "code": (
+            "def is_active(user):\n"
+            "    return user.get('status') == 'active'\n"
+            "\n"
+            "def count_active(users):\n"
+            "    total = 0\n"
+            "    for user in users:\n"
+            "        if is_active(user):\n"
+            "            total == total + 1\n"
+            "    return total"
+        ),
+        "bug_type": "wrong operator",
+        "bug_type_aliases": ["assignment vs comparison", "== instead of =", "comparison instead of assignment"],
+        "fixed_code": (
+            "def is_active(user):\n"
+            "    return user.get('status') == 'active'\n"
+            "\n"
+            "def count_active(users):\n"
+            "    total = 0\n"
+            "    for user in users:\n"
+            "        if is_active(user):\n"
+            "            total = total + 1\n"
+            "    return total"
+        ),
+        "test_cases": [
+            (([{"status": "active"}, {"status": "inactive"}],), 1),
+            (([{"status": "inactive"}],), 0),
+        ],
+        "review": {
+            "bugs": [
+                {"line": 8, "severity": "high", "description": "total == total + 1 compares instead of updating"},
+            ],
+            "security_issues": [],
+            "style_violations": [
+                {"line": 1, "severity": "low", "description": "Consider typing for user schema"},
+            ],
+        },
+    },
+    {
+        "id": 24,
+        "code": (
+            "def total_price(order):\n"
+            "    total = 0.0\n"
+            "    for item in order['items']:\n"
+            "        total += order['price']\n"
+            "    return total"
+        ),
+        "bug_type": "wrong variable used",
+        "bug_type_aliases": ["uses wrong variable", "wrong field referenced", "logic bug"],
+        "fixed_code": (
+            "def total_price(order):\n"
+            "    total = 0.0\n"
+            "    for item in order['items']:\n"
+            "        total += item['price']\n"
+            "    return total"
+        ),
+        "test_cases": [
+            (({"items": [{"price": 2.5}, {"price": 7.5}], "price": 100.0},), 10.0),
+        ],
+        "review": {
+            "bugs": [
+                {"line": 4, "severity": "high", "description": "Uses order['price'] instead of item['price'] per line item"},
+            ],
+            "security_issues": [],
+            "style_violations": [
+                {"line": 1, "severity": "low", "description": "Consider validating item structure before access"},
+            ],
+        },
+    },
+    {
+        "id": 25,
+        "code": (
+            "def append_audit_log(path, line):\n"
+            "    log = open(path, 'a')\n"
+            "    log.write(line + '\\n')\n"
+            "    return True"
+        ),
+        "bug_type": "resource leak",
+        "bug_type_aliases": ["file not closed", "unclosed file handle", "missing context manager"],
+        "fixed_code": (
+            "def append_audit_log(path, line):\n"
+            "    with open(path, 'a') as log:\n"
+            "        log.write(line + '\\n')\n"
+            "    return True"
+        ),
+        "test_cases": [],
+        "review": {
+            "bugs": [
+                {"line": 2, "severity": "medium", "description": "File handle is never closed, leaking resources"},
+            ],
+            "security_issues": [],
+            "style_violations": [
+                {"line": 2, "severity": "low", "description": "Use with-statement for file IO"},
+            ],
+        },
+    },
+    {
+        "id": 26,
+        "code": (
+            "_cached_items = []\n"
+            "\n"
+            "def remember_recent(items, max_size=100):\n"
+            "    for item in items:\n"
+            "        _cached_items.append(item)\n"
+            "    return len(_cached_items)"
+        ),
+        "bug_type": "memory leak",
+        "bug_type_aliases": ["unbounded cache", "growing list", "no cache eviction"],
+        "fixed_code": (
+            "_cached_items = []\n"
+            "\n"
+            "def remember_recent(items, max_size=100):\n"
+            "    for item in items:\n"
+            "        _cached_items.append(item)\n"
+            "    if len(_cached_items) > max_size:\n"
+            "        _cached_items[:] = _cached_items[-max_size:]\n"
+            "    return len(_cached_items)"
+        ),
+        "test_cases": [
+            (([1, 2, 3, 4], 3), 3),
+            (([5], 3), 3),
+        ],
+        "review": {
+            "bugs": [
+                {"line": 5, "severity": "medium", "description": "Cache grows without bound and never evicts items"},
+            ],
+            "security_issues": [],
+            "style_violations": [
+                {"line": 1, "severity": "low", "description": "Global mutable state makes testing harder"},
+            ],
+        },
+    },
+    {
+        "id": 27,
+        "code": (
+            "import os\n"
+            "\n"
+            "def delete_user_file(base_dir, filename):\n"
+            "    path = os.path.join(base_dir, filename)\n"
+            "    os.remove(path)\n"
+            "    return True"
+        ),
+        "bug_type": "unsafe file handling",
+        "bug_type_aliases": ["path traversal", "unsafe delete", "missing path validation"],
+        "fixed_code": (
+            "import os\n"
+            "\n"
+            "def delete_user_file(base_dir, filename):\n"
+            "    base = os.path.abspath(base_dir)\n"
+            "    target = os.path.abspath(os.path.join(base, filename))\n"
+            "    if not target.startswith(base + os.sep):\n"
+            "        raise ValueError('Invalid filename')\n"
+            "    os.remove(target)\n"
+            "    return True"
+        ),
+        "test_cases": [],
+        "review": {
+            "bugs": [],
+            "security_issues": [
+                {"line": 4, "severity": "high", "description": "User-controlled filename can delete arbitrary files"},
+            ],
+            "style_violations": [
+                {"line": 5, "severity": "low", "description": "Consider checking file existence before remove"},
+            ],
+        },
+    },
+    {
+        "id": 28,
+        "code": (
+            "def can_access(user, required_flags):\n"
+            "    flags = user.get('flags', 0)\n"
+            "    return (flags | required_flags) == required_flags"
+        ),
+        "bug_type": "wrong operator",
+        "bug_type_aliases": ["bitwise or instead of and", "operator misuse", "logic error"],
+        "fixed_code": (
+            "def can_access(user, required_flags):\n"
+            "    flags = user.get('flags', 0)\n"
+            "    return (flags & required_flags) == required_flags"
+        ),
+        "test_cases": [
+            (({"flags": 0b010}, 0b010), True),
+            (({"flags": 0b010}, 0b011), False),
+        ],
+        "review": {
+            "bugs": [
+                {"line": 3, "severity": "medium", "description": "Bitwise OR always sets bits, granting access incorrectly"},
+            ],
+            "security_issues": [
+                {"line": 3, "severity": "medium", "description": "Permission check can be bypassed due to wrong operator"},
+            ],
+            "style_violations": [],
+        },
+    },
+    {
+        "id": 29,
+        "code": (
+            "def sum_matrix(matrix):\n"
+            "    total = 0\n"
+            "    for r in range(len(matrix) + 1):\n"
+            "        for c in range(len(matrix[0])):\n"
+            "            total += matrix[r][c]\n"
+            "    return total"
+        ),
+        "bug_type": "index out of range",
+        "bug_type_aliases": ["off by one", "range error", "index error"],
+        "fixed_code": (
+            "def sum_matrix(matrix):\n"
+            "    total = 0\n"
+            "    for r in range(len(matrix)):\n"
+            "        for c in range(len(matrix[0])):\n"
+            "            total += matrix[r][c]\n"
+            "    return total"
+        ),
+        "test_cases": [
+            (([[1, 2], [3, 4]],), 10),
+            (([[5]],), 5),
+        ],
+        "review": {
+            "bugs": [
+                {"line": 3, "severity": "high", "description": "range(len(matrix) + 1) reads past last row"},
+            ],
+            "security_issues": [],
+            "style_violations": [
+                {"line": 4, "severity": "low", "description": "Assumes rectangular matrix without validation"},
+            ],
+        },
+    },
 ]

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Code Review Environment</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div class="hero__content">
+        <p class="eyebrow">Code Review Environment</p>
+        <h1>Code Review Environment</h1>
+        <p class="subtitle">
+          A clean, judge-ready interface for evaluating responses on real code review tasks.
+          Load a task, review the snippet, and submit your assessment quickly.
+        </p>
+        <div class="hero__actions">
+          <button class="btn btn--primary" id="start-review">Start Review</button>
+          <button class="btn btn--ghost" id="view-tasks">Task Details</button>
+        </div>
+      </div>
+      <div class="hero__card">
+        <div class="hero__card-header">Service</div>
+        <div class="hero__card-body">
+          <div class="stat">
+            <span class="stat__label">Endpoint</span>
+            <span class="stat__value">/reset, /step</span>
+          </div>
+          <div class="stat">
+            <span class="stat__label">Response</span>
+            <span class="stat__value">Realtime</span>
+          </div>
+          <div class="stat">
+            <span class="stat__label">Tasks</span>
+            <span class="stat__value">3 Modes</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="shell" id="app">
+      <div class="banner" id="error-banner" aria-live="polite"></div>
+
+      <section class="panel panel--controls" aria-label="Task controls">
+        <div class="controls">
+          <div class="control">
+            <label for="task-select">Task</label>
+            <select id="task-select">
+              <option value="bug_identification">Bug Identification (Easy)</option>
+              <option value="bug_fixing">Bug Fixing (Medium)</option>
+              <option value="full_review">Full Review (Hard)</option>
+            </select>
+          </div>
+          <div class="control">
+            <label for="episode-status">Episode</label>
+            <div class="pill" id="episode-status">Idle</div>
+          </div>
+          <div class="control control--actions">
+            <button class="btn btn--secondary" id="reset-btn">Reset</button>
+          </div>
+          <div class="loader" id="global-loader" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel panel--code" aria-label="Code snippet">
+        <div class="panel__header">
+          <div>
+            <h2>Code Snippet</h2>
+            <p class="muted">Review the code and respond based on the active task.</p>
+          </div>
+          <button class="btn btn--ghost" id="copy-code">Copy</button>
+        </div>
+        <pre class="code-box"><code id="code-snippet">Loading snippet...</code></pre>
+      </section>
+
+      <section class="panel panel--task" aria-label="Task instructions">
+        <div class="panel__header">
+          <div>
+            <h2>Task Info</h2>
+            <p class="muted">Current task and rubric.</p>
+          </div>
+          <div class="pill pill--accent" id="task-badge">Waiting</div>
+        </div>
+        <div class="task-info">
+          <div class="task-row">
+            <span class="task-label">Task Type</span>
+            <span class="task-value" id="task-type">-</span>
+          </div>
+          <div class="task-row">
+            <span class="task-label">Instructions</span>
+            <p class="task-instructions" id="task-instructions">Reset to get instructions.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel panel--input" aria-label="Response input">
+        <div class="panel__header">
+          <div>
+            <h2>Your Response</h2>
+            <p class="muted">Submit a concise answer. Keep formatting simple.</p>
+          </div>
+          <button class="btn btn--ghost" id="clear-response">Clear</button>
+        </div>
+        <textarea id="response-input" rows="6" placeholder="Waiting for task details..."></textarea>
+        <div class="input-actions">
+          <button class="btn btn--primary" id="submit-btn" disabled>Submit Response</button>
+          <p class="helper" id="response-hint">Responses are evaluated immediately.</p>
+        </div>
+      </section>
+
+      <section class="panel panel--result" aria-label="Result output">
+        <div class="panel__header">
+          <div>
+            <h2>Result</h2>
+            <p class="muted">Reward, status, and grader feedback.</p>
+          </div>
+          <div class="pill" id="status-pill">-</div>
+        </div>
+        <div class="result-grid">
+          <div class="reward">
+            <span class="reward__label">Reward</span>
+            <div class="reward__value" id="reward-value">--</div>
+          </div>
+          <div class="feedback">
+            <span class="feedback__label">Feedback</span>
+            <p class="feedback__text" id="feedback-text">Awaiting submission.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
