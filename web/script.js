@@ -20,6 +20,7 @@ const statusPill = document.getElementById("status-pill");
 const errorBanner = document.getElementById("error-banner");
 const loader = document.getElementById("global-loader");
 const responseHint = document.getElementById("response-hint");
+const resultPanel = document.getElementById("result-panel");
 
 const placeholders = {
   bug_identification: "Example: off-by-one error",
@@ -67,6 +68,13 @@ const setStatus = (text, state = "neutral") => {
   if (state === "danger") {
     statusPill.classList.add("pill--danger");
   }
+};
+
+const scrollToResult = () => {
+  if (!resultPanel) {
+    return;
+  }
+  resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
 };
 
 const updateTaskInfo = (obs) => {
@@ -168,6 +176,7 @@ const submitResponse = async () => {
     const obs = await postJson("/step", { response: trimmedResponse });
     updateObservation(obs);
     setEpisodeStatus(obs.done ? "Completed" : "Ready");
+    scrollToResult();
   } catch (error) {
     if (error.message.includes("Episode is done")) {
       isEpisodeDone = true;
