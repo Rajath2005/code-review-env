@@ -272,6 +272,12 @@ body {
   font-weight: 600;
 }
 
+.pill--success {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
 .banner {
   display: none;
   background: #fff1f0;
@@ -354,8 +360,8 @@ textarea {
 .result-grid {
   display: grid;
   grid-template-columns: minmax(180px, 240px) 1fr;
-  gap: 18px;
-  align-items: center;
+  gap: 16px;
+  align-items: start;
 }
 
 .reward {
@@ -363,6 +369,7 @@ textarea {
   border-radius: var(--radius-sm);
   padding: 16px;
   text-align: center;
+  min-width: 0;
 }
 
 .reward__label {
@@ -384,6 +391,10 @@ textarea {
   animation: rewardPulse 0.8s ease-out;
 }
 
+.feedback {
+  min-width: 0;
+}
+
 .feedback__label {
   color: var(--muted);
   font-size: 0.85rem;
@@ -393,7 +404,11 @@ textarea {
 
 .feedback__text {
   margin: 8px 0 0;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .loader {
@@ -493,6 +508,8 @@ textarea {
       "input result";
     align-content: start;
     min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
   .panel {
     min-height: 0;
@@ -523,8 +540,9 @@ textarea {
     max-height: 180px;
   }
   .feedback__text {
-    max-height: 120px;
-    overflow: auto;
+    max-height: 150px;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 }
 
