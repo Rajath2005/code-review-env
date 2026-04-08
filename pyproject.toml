@@ -15,6 +15,9 @@ dependencies = [
     "openai",
 ]
 
+[project.scripts]
+server = "server.app:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["data*", "tasks*", "server*"]

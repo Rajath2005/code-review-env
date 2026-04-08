@@ -255,6 +255,11 @@ curl -X POST https://bughunter28-code-review-env.hf.space/step \\
 
 # ── Dev server ────────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
+def main():
+    """Entry point for server.app:main"""
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7860)
+
+
+if __name__ == "__main__":
+    main()
