@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 
@@ -46,10 +47,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve static files (web UI)
-web_dir = os.path.join(os.path.dirname(__file__), "..", "web")
-if os.path.exists(web_dir):
-    app.mount("/static", StaticFiles(directory=web_dir), name="static")
+# Serve static files (web UI) - with robust path handling
+try:
+    # Try multiple possible paths for the web directory
+    web_dir = None
+    for possible_path in [
+        os.path.join(os.path.dirname(__file__), "..", "web"),
+        os.path.join(os.getcwd(), "web"),
+        "/app/web",  # Docker container path
+    ]:
+        if os.path.exists(possible_path):
+            web_dir = os.path.abspath(possible_path)
+            print(f"✓ Found web directory: {web_dir}")
+            break
+    
+    if web_dir:
+        app.mount("/static", StaticFiles(directory=web_dir), name="static")
+except Exception as e:
+    print(f"⚠ Warning: Could not mount static files: {e}")
 
 # Single shared environment instance per server process
 env = CodeReviewEnvironment()
@@ -151,12 +166,91 @@ async def state():
 @app.get("/", tags=["ui"])
 async def root():
     """Serve the web UI (index.html)."""
-    from fastapi.responses import FileResponse
-    html_path = os.path.join(os.path.dirname(__file__), "..", "web", "index.html")
-    if os.path.exists(html_path):
-        return FileResponse(html_path, media_type="text/html")
-    else:
-        raise HTTPException(status_code=404, detail="UI not found")
+    from fastapi.responses import HTMLResponse
+    
+    # Try multiple possible paths
+    html_paths = [
+        os.path.join(os.path.dirname(__file__), "..", "web", "index.html"),
+        os.path.join(os.getcwd(), "web", "index.html"),
+        "/app/web/index.html",
+    ]
+    
+    for html_path in html_paths:
+        if os.path.exists(html_path):
+            try:
+                with open(html_path, "r") as f:
+                    html_content = f.read()
+                return HTMLResponse(content=html_content)
+            except Exception as e:
+                print(f"Error reading {html_path}: {e}")
+                continue
+    
+    # Fallback: return a simple HTML page with API docs
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Code Review Agent</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+            .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+            h1 { color: #333; }
+            .endpoint { background: #f0f0f0; padding: 10px; margin: 10px 0; border-left: 4px solid #007bff; }
+            a { color: #007bff; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🚀 Code Review Agent — OpenEnv</h1>
+            <p>Interactive RL environment for Python code review.</p>
+            
+            <h2>API Endpoints</h2>
+            <div class="endpoint">
+                <strong>GET /health</strong> - Check if service is alive
+            </div>
+            <div class="endpoint">
+                <strong>GET /tasks</strong> - List all available tasks
+            </div>
+            <div class="endpoint">
+                <strong>POST /reset</strong> - Start a new episode
+            </div>
+            <div class="endpoint">
+                <strong>POST /step</strong> - Submit an action
+            </div>
+            <div class="endpoint">
+                <strong>GET /docs</strong> - <a href="/docs">View API documentation (Swagger UI)</a>
+            </div>
+            
+            <h2>Quick Start</h2>
+            <pre>
+# 1. Reset to get initial observation
+curl -X POST https://bughunter28-code-review-env.hf.space/reset \\
+  -H "Content-Type: application/json" \\
+  -d '{"task_name": "bug_identification"}'
+
+# 2. Submit your response
+curl -X POST https://bughunter28-code-review-env.hf.space/step \\
+  -H "Content-Type: application/json" \\
+  -d '{"response": "off-by-one error"}'
+            </pre>
+            
+            <h2>About</h2>
+            <p>
+                This is a complete OpenEnv RL environment with 3 tasks:
+                <ul>
+                    <li><strong>Bug Identification (Easy)</strong> - Name the bug type</li>
+                    <li><strong>Bug Fixing (Medium)</strong> - Fix the code</li>
+                    <li><strong>Full Review (Hard)</strong> - Write complete JSON review</li>
+                </ul>
+            </p>
+            <p>
+                📖 Docs: <a href="https://github.com/Rajath2005/code-review-env">GitHub</a>
+            </p>
+        </div>
+    </body>
+    </html>
+    """)
 
 
 # ── Dev server ────────────────────────────────────────────────────────────────
