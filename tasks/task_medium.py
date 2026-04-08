@@ -13,10 +13,51 @@ Scoring (partial credit):
 """
 
 import ast
+import logging
+import multiprocessing as mp
 import re
-import textwrap
-import traceback
+from typing import Any
 from data.snippets import SNIPPETS
+
+LOGGER = logging.getLogger(__name__)
+
+TIMEOUT_SECONDS = 2.5
+ALLOWED_MODULES = {
+    "math",
+    "re",
+    "json",
+    "datetime",
+    "collections",
+    "itertools",
+    "statistics",
+    "functools",
+    "operator",
+    "decimal",
+}
+SAFE_BUILTINS = {
+    "abs": abs,
+    "all": all,
+    "any": any,
+    "bool": bool,
+    "dict": dict,
+    "enumerate": enumerate,
+    "float": float,
+    "int": int,
+    "len": len,
+    "list": list,
+    "max": max,
+    "min": min,
+    "range": range,
+    "set": set,
+    "sorted": sorted,
+    "str": str,
+    "sum": sum,
+    "tuple": tuple,
+    "zip": zip,
+    "ValueError": ValueError,
+    "TypeError": TypeError,
+    "Exception": Exception,
+}
 
 
 def _get_snippet(snippet_id: int) -> dict:
@@ -48,43 +89,86 @@ def _parse_safe(code: str) -> bool:
         return False
 
 
-def _run_test_cases(code: str, test_cases: list) -> tuple[int, int]:
-    """
-    Execute code against test cases in a sandboxed namespace.
-    Returns (passed, total).
-    """
-    namespace = {}
-    exec(compile(code, "<agent_code>", "exec"), namespace)  # noqa: S102
+def _safe_import(name: str, globals: dict | None = None, locals: dict | None = None,
+                 fromlist: tuple | list = (), level: int = 0) -> Any:
+    base = name.split(".")[0]
+    if base in ALLOWED_MODULES:
+        return __import__(name, globals, locals, fromlist, level)
+    raise ImportError(f"Import blocked: {name}")
 
-    # Find the function name defined in the code
-    tree = ast.parse(code)
-    func_names = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
-    if not func_names:
-        return 0, len(test_cases)
 
-    func = namespace.get(func_names[0])
-    if func is None:
-        return 0, len(test_cases)
+def _execute_tests(code: str, test_cases: list, queue: mp.Queue) -> None:
+    try:
+        ast.parse(code)
+        safe_globals = {"__builtins__": dict(SAFE_BUILTINS)}
+        safe_globals["__builtins__"]["__import__"] = _safe_import
 
-    passed = 0
-    for args, expected in test_cases:
-        try:
-            if isinstance(args, (list, tuple)) and not isinstance(args, str):
-                result = func(*args) if isinstance(args, tuple) else func(args)
-            else:
-                result = func(args)
+        exec(compile(code, "<agent_code>", "exec"), safe_globals)  # noqa: S102
 
-            # For type-only checks (e.g. returns str)
-            if isinstance(expected, type):
-                if isinstance(result, expected):
-                    passed += 1
-            else:
-                if result == expected:
-                    passed += 1
-        except Exception:
-            pass  # failed test case
+        tree = ast.parse(code)
+        func_names = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+        if not func_names:
+            queue.put({"status": "no_function", "passed": 0, "total": len(test_cases), "error": "No function found"})
+            return
 
-    return passed, len(test_cases)
+        func = safe_globals.get(func_names[0])
+        if func is None:
+            queue.put({"status": "no_function", "passed": 0, "total": len(test_cases), "error": "Function not in globals"})
+            return
+
+        passed = 0
+        for args, expected in test_cases:
+            try:
+                if isinstance(args, (list, tuple)) and not isinstance(args, str):
+                    result = func(*args) if isinstance(args, tuple) else func(args)
+                else:
+                    result = func(args)
+
+                if isinstance(expected, type):
+                    if isinstance(result, expected):
+                        passed += 1
+                else:
+                    if result == expected:
+                        passed += 1
+            except Exception:
+                pass
+
+        queue.put({"status": "ok", "passed": passed, "total": len(test_cases), "error": ""})
+    except SyntaxError as exc:
+        queue.put({"status": "syntax_error", "passed": 0, "total": len(test_cases), "error": str(exc)})
+    except Exception as exc:
+        queue.put({"status": "exec_error", "passed": 0, "total": len(test_cases), "error": f"{type(exc).__name__}: {exc}"})
+
+
+def _run_test_cases_safely(code: str, test_cases: list) -> dict:
+    queue: mp.Queue = mp.Queue()
+    process = mp.Process(target=_execute_tests, args=(code, test_cases, queue))
+    process.start()
+    process.join(TIMEOUT_SECONDS)
+
+    if process.is_alive():
+        process.terminate()
+        process.join(0.2)
+        return {"status": "timeout", "passed": 0, "total": len(test_cases), "error": "Execution timed out"}
+
+    if queue.empty():
+        return {"status": "exec_error", "passed": 0, "total": len(test_cases), "error": "No result returned"}
+
+    return queue.get()
+
+
+def _log_metrics(passed: int, total: int, score: float) -> None:
+    accuracy = 1.0 if total > 0 and passed == total else 0.0
+    precision = score
+    recall = score
+    LOGGER.info(
+        "medium_metrics accuracy=%.2f precision=%.2f recall=%.2f passed=%d total=%d",
+        accuracy,
+        precision,
+        recall,
+        passed,
+        total,
+    )
 
 
 def run_medium_task(agent_response: str, snippet_id: int) -> tuple[float, str, bool]:
@@ -106,33 +190,37 @@ def run_medium_task(agent_response: str, snippet_id: int) -> tuple[float, str, b
     if not _parse_safe(code):
         return 0.0, "Your code has a syntax error and could not be parsed.", True
 
-    # No test cases for this snippet — fallback to AST similarity check
+    # No test cases for this snippet — provide partial credit for valid code
     if not test_cases:
-        expected_code = textwrap.dedent(snippet["fixed_code"])
-        # Simple heuristic: does the fix match key patterns?
-        if "with open" in code or "shell=False" in code or "allowed" in code:
-            return 0.8, "Fix looks correct based on pattern check (no runnable tests for this snippet).", True
-        return 0.3, "Code compiles but the fix pattern doesn't match expected approach.", True
+        _log_metrics(0, 0, 0.4)
+        return 0.4, "No runnable tests for this snippet. Awarding partial credit for valid code.", True
 
-    # Run test cases
-    try:
-        passed, total = _run_test_cases(code, test_cases)
-    except Exception as e:
-        return 0.0, f"Code raised an exception during execution: {type(e).__name__}: {e}", True
+    result = _run_test_cases_safely(code, test_cases)
+    status = result["status"]
+    passed = result["passed"]
+    total = result["total"]
+
+    if status == "syntax_error":
+        _log_metrics(0, total, 0.0)
+        return 0.0, "Your code has a syntax error and could not be parsed.", True
+    if status == "timeout":
+        _log_metrics(0, total, 0.0)
+        return 0.0, "Code execution timed out. Make sure it terminates quickly.", True
+    if status in {"exec_error", "no_function"}:
+        _log_metrics(0, total, 0.0)
+        return 0.0, f"Code could not be executed safely: {result['error']}", True
 
     if total == 0:
-        return 0.5, "No test cases available — assuming partial credit.", True
+        _log_metrics(0, 0, 0.4)
+        return 0.4, "No test cases available — partial credit awarded.", True
 
     ratio = passed / total
+    reward = round(ratio, 3)
+    _log_metrics(passed, total, reward)
 
     if ratio == 1.0:
-        reward = 1.0
         feedback = f"All {total} test cases passed. Bug fixed correctly!"
-    elif ratio >= 0.5:
-        reward = round(0.3 + 0.6 * ratio, 2)  # scale 0.3 → 0.9
-        feedback = f"{passed}/{total} test cases passed. Partial fix — some edge cases still fail."
     else:
-        reward = round(0.1 * ratio, 2)
-        feedback = f"Only {passed}/{total} test cases passed. The core bug is likely not fixed."
+        feedback = f"{passed}/{total} test cases passed. Partial fix — some cases still fail."
 
     return reward, feedback, True

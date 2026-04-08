@@ -19,12 +19,19 @@ Partial credit: each matched finding adds to the score proportionally.
 """
 
 import json
+import logging
 import re
 from data.snippets import SNIPPETS
 
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+SEVERITY_WEIGHT = {"high": 1.0, "medium": 0.7, "low": 0.4}
 WEIGHTS = {"bugs": 0.40, "security_issues": 0.35, "style_violations": 0.15}
 ORDERING_WEIGHT = 0.10
+MISSING_CRITICAL_PENALTY = 0.05
+HALLUCINATION_PENALTY = 0.03
+MAX_PENALTY = 0.25
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _get_snippet(snippet_id: int) -> dict:
@@ -113,37 +120,55 @@ def _match_finding(agent_finding: dict, expected_findings: list[dict]) -> float:
     return best
 
 
-def _score_category(agent_items: list, expected_items: list) -> float:
+def _severity_weight(severity: str) -> float:
+    return SEVERITY_WEIGHT.get(_normalise_severity(severity), 0.4)
+
+
+def _score_category(agent_items: list, expected_items: list) -> tuple[float, float, float, int, int]:
     """
     Score a category (bugs / security_issues / style_violations).
-    Uses precision + recall averaged (F1-style).
+    Returns (f1, precision, recall, hallucinations, missing_critical).
     """
     if not expected_items:
-        # No expected findings — only penalise false positives
         false_positives = len(agent_items)
-        return max(0.0, 1.0 - 0.3 * false_positives)
+        precision = max(0.0, 1.0 - 0.3 * false_positives)
+        recall = 1.0
+        f1 = 0.0 if precision == 0 else 2 * precision * recall / (precision + recall)
+        return f1, precision, recall, false_positives, 0
 
     if not agent_items:
-        return 0.0
+        return 0.0, 0.0, 0.0, 0, len([e for e in expected_items if _normalise_severity(e.get("severity", "low")) == "high"])
 
-    # Recall: how many expected did the agent find?
+    expected_weights = [_severity_weight(e.get("severity", "low")) for e in expected_items]
+    expected_weight_total = max(sum(expected_weights), 1e-6)
+
     recall_scores = []
-    for exp in expected_items:
+    missing_critical = 0
+    for exp, weight in zip(expected_items, expected_weights):
         best = max((_match_finding(a, [exp]) for a in agent_items), default=0.0)
-        recall_scores.append(best)
-    recall = sum(recall_scores) / len(recall_scores)
+        recall_scores.append(best * weight)
+        if _normalise_severity(exp.get("severity", "low")) == "high" and best < 0.5:
+            missing_critical += 1
+    recall = sum(recall_scores) / expected_weight_total
 
-    # Precision: how many agent findings are correct?
+    agent_weights = [_severity_weight(a.get("severity", "low")) for a in agent_items if isinstance(a, dict)]
+    agent_weight_total = max(sum(agent_weights), 1e-6)
+
     prec_scores = []
-    for a in agent_items:
+    hallucinations = 0
+    for a, weight in zip(agent_items, agent_weights):
         best = _match_finding(a, expected_items)
-        prec_scores.append(best)
-    precision = sum(prec_scores) / len(prec_scores)
+        prec_scores.append(best * weight)
+        if best < 0.3:
+            hallucinations += 1
+    precision = sum(prec_scores) / agent_weight_total
 
-    # F1
     if precision + recall == 0:
-        return 0.0
-    return 2 * precision * recall / (precision + recall)
+        f1 = 0.0
+    else:
+        f1 = 2 * precision * recall / (precision + recall)
+
+    return f1, precision, recall, hallucinations, missing_critical
 
 
 def _score_ordering(agent_items: list) -> float:
@@ -192,34 +217,56 @@ def run_hard_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
 
     # Score each category
     category_scores = {}
+    precision_scores = {}
+    recall_scores = {}
+    hallucinations = 0
+    missing_critical = 0
     for cat, weight in WEIGHTS.items():
         agent_items = parsed.get(cat, [])
         expected_items = expected.get(cat, [])
         if not isinstance(agent_items, list):
             agent_items = []
-        score = _score_category(agent_items, expected_items)
+        score, precision, recall, hallucinated, missing = _score_category(agent_items, expected_items)
         category_scores[cat] = (score, weight)
+        precision_scores[cat] = precision
+        recall_scores[cat] = recall
+        hallucinations += hallucinated
+        if cat in {"bugs", "security_issues"}:
+            missing_critical += missing
 
-    # Score ordering across all categories
-    all_agent_items = [
-        item
-        for cat in ["bugs", "security_issues", "style_violations"]
-        for item in parsed.get(cat, [])
-        if isinstance(item, dict)
-    ]
-    ordering_score = _score_ordering(all_agent_items)
+    # Score ordering within each category
+    ordering_scores = []
+    for cat in ["bugs", "security_issues", "style_violations"]:
+        cat_items = [item for item in parsed.get(cat, []) if isinstance(item, dict)]
+        ordering_scores.append(_score_ordering(cat_items))
+    ordering_score = sum(ordering_scores) / len(ordering_scores)
 
     # Weighted total
     total = sum(score * weight for score, weight in category_scores.values())
     total += ordering_score * ORDERING_WEIGHT
+
+    penalty = min(MAX_PENALTY, missing_critical * MISSING_CRITICAL_PENALTY + hallucinations * HALLUCINATION_PENALTY)
+    total = max(0.0, total - penalty)
     total = round(min(1.0, total), 3)
 
     # Build feedback
+    weighted_precision = sum(precision_scores[cat] * WEIGHTS[cat] for cat in WEIGHTS) / sum(WEIGHTS.values())
+    weighted_recall = sum(recall_scores[cat] * WEIGHTS[cat] for cat in WEIGHTS) / sum(WEIGHTS.values())
+    LOGGER.info(
+        "hard_metrics precision=%.2f recall=%.2f missing_critical=%d hallucinations=%d",
+        weighted_precision,
+        weighted_recall,
+        missing_critical,
+        hallucinations,
+    )
+
     feedback_parts = []
     for cat, (score, weight) in category_scores.items():
         pct = round(score * 100)
         feedback_parts.append(f"{cat}: {pct}% match")
     feedback_parts.append(f"severity ordering: {round(ordering_score * 100)}%")
+    if penalty > 0:
+        feedback_parts.append(f"penalty: -{round(penalty, 2)}")
     feedback = f"Score {total:.2f} — " + " | ".join(feedback_parts)
 
     return total, feedback, True

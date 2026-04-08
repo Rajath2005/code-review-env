@@ -21,6 +21,16 @@ This environment fills that gap. It provides a structured, reproducible gym wher
 
 The environment is directly useful for the RL/agent research community to train, compare, and evaluate code-reviewing language models.
 
+## Why This Matters
+
+Code review is a critical safety and quality gate in production software. It prevents regressions, security incidents, and costly outages before they reach users. Industry adoption of tools like CodeRabbit and GitHub Copilot Review proves the demand for scalable review automation, but there is still **no standardized RL environment** to train and benchmark agents for this work. This project fills that gap with objective grading, realistic code, and reproducible rewards.
+
+## Innovation
+
+- Multi-level tasks that progress from bug identification to bug fixing and full structured reviews
+- Intelligent grading that combines exact, partial, and weighted scoring for realistic feedback
+- A growing dataset of production-style snippets covering security, runtime, logic, and resource issues
+
 ---
 
 ## Tasks
