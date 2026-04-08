@@ -1,3 +1,12 @@
+---
+title: Code Review Agent — OpenEnv
+description: RL environment for training AI agents on Python code review
+sdk: docker
+app_port: 7860
+models:
+  - Qwen/Qwen2.5-72B-Instruct
+---
+
 # Code Review Agent — OpenEnv RL Benchmark
 
 > **An OpenEnv RL environment for training and benchmarking AI agents on Python code review.**
