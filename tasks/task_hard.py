@@ -204,7 +204,8 @@ def run_hard_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
     # Parse JSON
     parsed = _extract_json(agent_response)
     if parsed is None:
-        return 0.0, (
+        score = 0.01  # Minimum valid score
+        return score, (
             "Could not parse your response as JSON. "
             "Respond with: {\"bugs\": [...], \"security_issues\": [...], \"style_violations\": [...]}"
         ), True
@@ -213,7 +214,8 @@ def run_hard_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
     required_keys = {"bugs", "security_issues", "style_violations"}
     missing = required_keys - set(parsed.keys())
     if missing:
-        return 0.1, f"Response is missing required keys: {missing}. Score capped at 0.1.", True
+        score = 0.05  # Minimum valid score for missing keys
+        return score, f"Response is missing required keys: {missing}. Score capped at 0.05.", True
 
     # Score each category
     category_scores = {}
@@ -248,6 +250,12 @@ def run_hard_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
     penalty = min(MAX_PENALTY, missing_critical * MISSING_CRITICAL_PENALTY + hallucinations * HALLUCINATION_PENALTY)
     total = max(0.0, total - penalty)
     total = round(min(1.0, total), 3)
+    
+    # Clamp to open interval (0, 1) - strictly between 0 and 1
+    if total <= 0.0:
+        total = 0.01
+    elif total >= 1.0:
+        total = 0.99
 
     # Build feedback
     weighted_precision = sum(precision_scores[cat] * WEIGHTS[cat] for cat in WEIGHTS) / sum(WEIGHTS.values())

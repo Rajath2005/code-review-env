@@ -72,8 +72,18 @@ def _check_synonym_map(response: str, expected: str) -> bool:
     return False
 
 
+def _clamp_score(score: float) -> float:
+    """Clamp score to open interval (0, 1) - strictly between 0 and 1."""
+    if score <= 0.0:
+        return 0.01
+    elif score >= 1.0:
+        return 0.99
+    else:
+        return round(score, 2)
+
+
 def _log_metrics(score: float) -> None:
-    accuracy = 1.0 if score == 1.0 else 0.0
+    accuracy = 1.0 if score >= 0.99 else 0.0
     precision = score
     recall = score
     LOGGER.info(
@@ -93,13 +103,15 @@ def run_easy_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
 
     # 1. Exact match
     if response == expected or response in aliases:
-        _log_metrics(1.0)
-        return 1.0, f"Correct! The bug is: {snippet['bug_type']}", True
+        score = _clamp_score(1.0)
+        _log_metrics(score)
+        return score, f"Correct! The bug is: {snippet['bug_type']}", True
 
     # 2. Synonym map
     if _check_synonym_map(response, expected):
-        _log_metrics(1.0)
-        return 1.0, f"Correct! The bug is: {snippet['bug_type']}", True
+        score = _clamp_score(1.0)
+        _log_metrics(score)
+        return score, f"Correct! The bug is: {snippet['bug_type']}", True
 
     # 3. Close match (keyword overlap)
     stop = {"the", "a", "an", "is", "in", "on", "to", "of", "and", "or", "with", "error", "bug", "issue"}
@@ -115,20 +127,23 @@ def run_easy_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
     needed = max(1, len(exp_kws) // 2)
 
     if best >= needed and response:
-        _log_metrics(0.7)
-        return 0.7, (
+        score = _clamp_score(0.7)
+        _log_metrics(score)
+        return score, (
             f"Partially correct. The exact bug type is: '{snippet['bug_type']}'"
         ), True
 
     # 4. Keyword match (weak signal)
     if response and best > 0:
-        _log_metrics(0.4)
-        return 0.4, (
+        score = _clamp_score(0.4)
+        _log_metrics(score)
+        return score, (
             f"Somewhat related. The exact bug type is: '{snippet['bug_type']}'"
         ), True
 
-    _log_metrics(0.0)
-    return 0.0, (
+    score = _clamp_score(0.0)
+    _log_metrics(score)
+    return score, (
         f"Incorrect. The bug type is: '{snippet['bug_type']}'. "
         f"Hint: look at control flow and data flow carefully."
     ), True

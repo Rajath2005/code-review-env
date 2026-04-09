@@ -157,6 +157,16 @@ def _run_test_cases_safely(code: str, test_cases: list) -> dict:
     return queue.get()
 
 
+def _clamp_score(score: float) -> float:
+    """Clamp score to open interval (0, 1) - strictly between 0 and 1."""
+    if score <= 0.0:
+        return 0.01
+    elif score >= 1.0:
+        return 0.99
+    else:
+        return round(score, 3)
+
+
 def _log_metrics(passed: int, total: int, score: float) -> None:
     accuracy = 1.0 if total > 0 and passed == total else 0.0
     precision = score
@@ -176,7 +186,7 @@ def run_medium_task(agent_response: str, snippet_id: int) -> tuple[float, str, b
     Grade the agent's bug fix.
 
     Returns:
-        reward (float): 0.0 – 1.0
+        reward (float): 0.01 – 0.99 (strictly within open interval)
         feedback (str): explanation
         done (bool): True once graded
     """
@@ -188,12 +198,14 @@ def run_medium_task(agent_response: str, snippet_id: int) -> tuple[float, str, b
 
     # Syntax check
     if not _parse_safe(code):
-        return 0.0, "Your code has a syntax error and could not be parsed.", True
+        score = _clamp_score(0.0)
+        return score, "Your code has a syntax error and could not be parsed.", True
 
     # No test cases for this snippet — provide partial credit for valid code
     if not test_cases:
-        _log_metrics(0, 0, 0.4)
-        return 0.4, "No runnable tests for this snippet. Awarding partial credit for valid code.", True
+        score = _clamp_score(0.4)
+        _log_metrics(0, 0, score)
+        return score, "No runnable tests for this snippet. Awarding partial credit for valid code.", True
 
     result = _run_test_cases_safely(code, test_cases)
     status = result["status"]
@@ -201,24 +213,28 @@ def run_medium_task(agent_response: str, snippet_id: int) -> tuple[float, str, b
     total = result["total"]
 
     if status == "syntax_error":
-        _log_metrics(0, total, 0.0)
-        return 0.0, "Your code has a syntax error and could not be parsed.", True
+        score = _clamp_score(0.0)
+        _log_metrics(0, total, score)
+        return score, "Your code has a syntax error and could not be parsed.", True
     if status == "timeout":
-        _log_metrics(0, total, 0.0)
-        return 0.0, "Code execution timed out. Make sure it terminates quickly.", True
+        score = _clamp_score(0.0)
+        _log_metrics(0, total, score)
+        return score, "Code execution timed out. Make sure it terminates quickly.", True
     if status in {"exec_error", "no_function"}:
-        _log_metrics(0, total, 0.0)
-        return 0.0, f"Code could not be executed safely: {result['error']}", True
+        score = _clamp_score(0.0)
+        _log_metrics(0, total, score)
+        return score, f"Code could not be executed safely: {result['error']}", True
 
     if total == 0:
-        _log_metrics(0, 0, 0.4)
-        return 0.4, "No test cases available — partial credit awarded.", True
+        score = _clamp_score(0.4)
+        _log_metrics(0, 0, score)
+        return score, "No test cases available — partial credit awarded.", True
 
     ratio = passed / total
-    reward = round(ratio, 3)
+    reward = _clamp_score(round(ratio, 3))
     _log_metrics(passed, total, reward)
 
-    if ratio == 1.0:
+    if reward >= 0.98:
         feedback = f"All {total} test cases passed. Bug fixed correctly!"
     else:
         feedback = f"{passed}/{total} test cases passed. Partial fix — some cases still fail."
