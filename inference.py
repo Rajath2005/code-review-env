@@ -15,6 +15,11 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 
 BASE_URL = "https://BugHunter28-code-review-env.hf.space"
 TASKS = ["bug_identification", "bug_fixing", "full_review"]
+OUTPUT_TASK_KEYS = {
+    "bug_identification": "task_1",
+    "bug_fixing": "task_2",
+    "full_review": "task_3",
+}
 
 client = OpenAI(
     base_url=API_BASE_URL,
@@ -25,6 +30,26 @@ SYSTEM_PROMPT = (
     "You are a senior software engineer. Carefully analyze the given Python code "
     "and return only the correct answer based on task instructions. Do not explain."
 )
+
+
+def safe_score(score: float) -> float:
+    """Clamp a score to the open interval (0, 1) as required by evaluation."""
+    try:
+        value = float(score)
+    except (TypeError, ValueError):
+        value = 0.0
+
+    if value <= 0.0:
+        return 0.1
+    if value >= 1.0:
+        return 0.9
+
+    value = round(value, 4)
+    if value <= 0.0:
+        return 0.1
+    if value >= 1.0:
+        return 0.9
+    return value
 
 
 def post_json(path: str, payload: dict) -> dict:
@@ -94,7 +119,7 @@ def log_end(success: bool, steps: int, rewards: list[float]):
     )
 
 
-def run_task(task_name: str):
+def run_task(task_name: str) -> float:
     rewards: list[float] = []
     steps = 0
     success = False
@@ -115,15 +140,23 @@ def run_task(task_name: str):
             if done:
                 break
 
-        success = rewards[-1] >= 0.7 if rewards else False
+        final_reward = rewards[-1] if rewards else 0.0
+        task_score = safe_score(final_reward)
+        success = task_score >= 0.7
         log_end(success, steps, rewards)
+        return task_score
     except Exception:
         log_end(False, steps, rewards)
+        return safe_score(0.0)
 
 
 def main():
+    scores: dict[str, float] = {}
     for task in TASKS:
-        run_task(task)
+        output_key = OUTPUT_TASK_KEYS.get(task, task)
+        scores[output_key] = safe_score(run_task(task))
+
+    print(json.dumps(scores), flush=True)
 
 
 if __name__ == "__main__":
