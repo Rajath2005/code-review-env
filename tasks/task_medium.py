@@ -14,14 +14,14 @@ Scoring (partial credit):
 
 import ast
 import logging
-import multiprocessing as mp
 import re
+import threading
 from typing import Any
 from data.snippets import SNIPPETS
 
 LOGGER = logging.getLogger(__name__)
 
-TIMEOUT_SECONDS = 2.5
+TIMEOUT_SECONDS = 5.0
 ALLOWED_MODULES = {
     "math",
     "re",
@@ -97,7 +97,7 @@ def _safe_import(name: str, globals: dict | None = None, locals: dict | None = N
     raise ImportError(f"Import blocked: {name}")
 
 
-def _execute_tests(code: str, test_cases: list, queue: mp.Queue) -> None:
+def _execute_tests_inner(code: str, test_cases: list) -> dict:
     try:
         ast.parse(code)
         safe_globals = {"__builtins__": dict(SAFE_BUILTINS)}
@@ -108,13 +108,11 @@ def _execute_tests(code: str, test_cases: list, queue: mp.Queue) -> None:
         tree = ast.parse(code)
         func_names = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
         if not func_names:
-            queue.put({"status": "no_function", "passed": 0, "total": len(test_cases), "error": "No function found"})
-            return
+            return {"status": "no_function", "passed": 0, "total": len(test_cases), "error": "No function found"}
 
         func = safe_globals.get(func_names[0])
         if func is None:
-            queue.put({"status": "no_function", "passed": 0, "total": len(test_cases), "error": "Function not in globals"})
-            return
+            return {"status": "no_function", "passed": 0, "total": len(test_cases), "error": "Function not in globals"}
 
         passed = 0
         for args, expected in test_cases:
@@ -133,28 +131,27 @@ def _execute_tests(code: str, test_cases: list, queue: mp.Queue) -> None:
             except Exception:
                 pass
 
-        queue.put({"status": "ok", "passed": passed, "total": len(test_cases), "error": ""})
+        return {"status": "ok", "passed": passed, "total": len(test_cases), "error": ""}
     except SyntaxError as exc:
-        queue.put({"status": "syntax_error", "passed": 0, "total": len(test_cases), "error": str(exc)})
+        return {"status": "syntax_error", "passed": 0, "total": len(test_cases), "error": str(exc)}
     except Exception as exc:
-        queue.put({"status": "exec_error", "passed": 0, "total": len(test_cases), "error": f"{type(exc).__name__}: {exc}"})
+        return {"status": "exec_error", "passed": 0, "total": len(test_cases), "error": f"{type(exc).__name__}: {exc}"}
 
 
 def _run_test_cases_safely(code: str, test_cases: list) -> dict:
-    queue: mp.Queue = mp.Queue()
-    process = mp.Process(target=_execute_tests, args=(code, test_cases, queue))
-    process.start()
-    process.join(TIMEOUT_SECONDS)
+    result_holder = {}
 
-    if process.is_alive():
-        process.terminate()
-        process.join(0.2)
+    def runner():
+        result_holder["result"] = _execute_tests_inner(code, test_cases)
+
+    thread = threading.Thread(target=runner, daemon=True)
+    thread.start()
+    thread.join(TIMEOUT_SECONDS)
+
+    if thread.is_alive():
         return {"status": "timeout", "passed": 0, "total": len(test_cases), "error": "Execution timed out"}
 
-    if queue.empty():
-        return {"status": "exec_error", "passed": 0, "total": len(test_cases), "error": "No result returned"}
-
-    return queue.get()
+    return result_holder.get("result", {"status": "exec_error", "passed": 0, "total": len(test_cases), "error": "No result returned"})
 
 
 def _clamp_score(score: float) -> float:
