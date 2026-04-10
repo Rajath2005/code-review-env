@@ -100,19 +100,21 @@ def _match_finding(agent_finding: dict, expected_findings: list[dict]) -> float:
         exp_words = set(exp_desc.split())
         stop = {"the", "a", "an", "is", "in", "on", "to", "of", "and", "or", "with", "—", "-"}
         overlap = (agent_words - stop) & (exp_words - stop)
-        desc_score = min(1.0, len(overlap) / max(len(exp_words - stop), 1))
+        desc_score = min(0.99, len(overlap) / max(len(exp_words - stop), 1))
+        desc_score = max(0.01, desc_score)  # Clamp to (0.01, 0.99)
 
-        # Severity match
-        sev_score = 1.0 if agent_sev == exp_sev else 0.5
+        # Severity match (clamp to range, not exact 0/1)
+        sev_score = 0.99 if agent_sev == exp_sev else 0.45
 
-        # Line proximity (optional bonus)
-        line_score = 0.0
+        # Line proximity (optional bonus) -- clamp away from exact 0/1
+        line_score = 0.01
         if agent_line is not None and exp_line is not None:
             diff = abs(int(agent_line) - int(exp_line))
-            line_score = 1.0 if diff == 0 else (0.5 if diff <= 1 else 0.0)
+            line_score = 0.99 if diff == 0 else (0.45 if diff <= 1 else 0.01)
 
-        # Composite score: desc matters most
+        # Composite score: desc matters most (will be between 0.01 and 0.99)
         score = 0.6 * desc_score + 0.25 * sev_score + 0.15 * line_score
+        score = max(0.01, min(0.99, score))  # Final clamp
 
         if desc_score > 0.3:  # only count if description is at least somewhat relevant
             best = max(best, score)
@@ -128,16 +130,19 @@ def _score_category(agent_items: list, expected_items: list) -> tuple[float, flo
     """
     Score a category (bugs / security_issues / style_violations).
     Returns (f1, precision, recall, hallucinations, missing_critical).
+    Note: These are internal metrics, but we clamp them to avoid exact 0/1.
     """
     if not expected_items:
         false_positives = len(agent_items)
-        precision = max(0.0, 1.0 - 0.3 * false_positives)
-        recall = 1.0
-        f1 = 0.0 if precision == 0 else 2 * precision * recall / (precision + recall)
+        precision = max(0.01, 0.99 - 0.3 * false_positives)  # Avoid exact 0.0 or 1.0
+        precision = min(precision, 0.99)  # Cap at 0.99
+        recall = 0.99  # Avoid exact 1.0
+        f1 = 0.01 if precision < 0.05 else 2 * precision * recall / (precision + recall)
+        f1 = round(f1, 3)
         return f1, precision, recall, false_positives, 0
 
     if not agent_items:
-        return 0.0, 0.0, 0.0, 0, len([e for e in expected_items if _normalise_severity(e.get("severity", "low")) == "high"])
+        return 0.01, 0.01, 0.01, 0, len([e for e in expected_items if _normalise_severity(e.get("severity", "low")) == "high"])
 
     expected_weights = [_severity_weight(e.get("severity", "low")) for e in expected_items]
     expected_weight_total = max(sum(expected_weights), 1e-6)
@@ -145,11 +150,12 @@ def _score_category(agent_items: list, expected_items: list) -> tuple[float, flo
     recall_scores = []
     missing_critical = 0
     for exp, weight in zip(expected_items, expected_weights):
-        best = max((_match_finding(a, [exp]) for a in agent_items), default=0.0)
+        best = max((_match_finding(a, [exp]) for a in agent_items), default=0.01)
         recall_scores.append(best * weight)
         if _normalise_severity(exp.get("severity", "low")) == "high" and best < 0.5:
             missing_critical += 1
     recall = sum(recall_scores) / expected_weight_total
+    recall = max(0.01, min(0.99, recall))  # Clamp to valid range
 
     agent_weights = [_severity_weight(a.get("severity", "low")) for a in agent_items if isinstance(a, dict)]
     agent_weight_total = max(sum(agent_weights), 1e-6)
@@ -174,10 +180,10 @@ def _score_category(agent_items: list, expected_items: list) -> tuple[float, flo
 def _score_ordering(agent_items: list) -> float:
     """
     Check that items within a category are ordered high → medium → low.
-    Returns 1.0 if correctly ordered, partial otherwise.
+    Returns score strictly between 0.01 and 0.99 (never 0.0 or 1.0).
     """
     if len(agent_items) <= 1:
-        return 1.0
+        return 0.99  # Perfect ordering for single/empty items
 
     severities = [SEVERITY_ORDER.get(_normalise_severity(a.get("severity", "low")), 2)
                   for a in agent_items if isinstance(a, dict)]
@@ -186,7 +192,12 @@ def _score_ordering(agent_items: list) -> float:
         1 for i in range(len(severities) - 1)
         if severities[i] > severities[i + 1]
     )
-    return max(0.0, 1.0 - violations / len(severities))
+    
+    # Calculate score: 0.99 for perfect, down to 0.01 for worst
+    score = 1.0 - violations / max(1, len(severities))
+    # Clamp strictly to (0.01, 0.99)
+    score = max(0.01, min(0.99, round(score, 3)))
+    return score
 
 
 def run_hard_task(agent_response: str, snippet_id: int) -> tuple[float, str, bool]:
@@ -248,10 +259,10 @@ def run_hard_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
     total += ordering_score * ORDERING_WEIGHT
 
     penalty = min(MAX_PENALTY, missing_critical * MISSING_CRITICAL_PENALTY + hallucinations * HALLUCINATION_PENALTY)
-    total = max(0.0, total - penalty)
-    total = round(min(1.0, total), 3)
+    total = total - penalty
+    total = round(min(0.99, max(0.01, total)), 3)  # Clamp strictly to (0.01, 0.99)
     
-    # Clamp to open interval (0, 1) - strictly between 0 and 1
+    # Verify final clamping (safety check)
     if total <= 0.0:
         total = 0.01
     elif total >= 1.0:
