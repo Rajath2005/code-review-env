@@ -80,16 +80,16 @@ def _normalise_severity(s: str) -> str:
 def _match_finding(agent_finding: dict, expected_findings: list[dict]) -> float:
     """
     Score one agent finding against expected findings.
-    Returns best match score (0.0 – 1.0).
+    Returns best match score strictly within (0.01, 0.99).
     """
     if not isinstance(agent_finding, dict):
-        return 0.0
+        return 0.01
 
     agent_desc = str(agent_finding.get("description", "")).lower()
     agent_sev = _normalise_severity(agent_finding.get("severity", ""))
     agent_line = agent_finding.get("line")
 
-    best = 0.0
+    best = 0.01
     for exp in expected_findings:
         exp_desc = str(exp.get("description", "")).lower()
         exp_sev = exp.get("severity", "low")
