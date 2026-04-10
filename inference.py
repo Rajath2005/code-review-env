@@ -33,22 +33,29 @@ SYSTEM_PROMPT = (
 
 
 def safe_score(score: float) -> float:
-    """Clamp a score to the open interval (0, 1) as required by evaluation."""
+    """Clamp a score to the open interval (0, 1) as required by evaluation.
+    Must be strictly between 0 and 1 - not equal to 0.0 or 1.0.
+    """
     try:
         value = float(score)
     except (TypeError, ValueError):
-        value = 0.0
+        value = 0.01  # Default to minimum valid score
 
+    # First pass: extreme boundaries
     if value <= 0.0:
-        return 0.1
+        return 0.01
     if value >= 1.0:
-        return 0.9
+        return 0.99
 
+    # Round to avoid floating point edge cases
     value = round(value, 4)
+
+    # Second pass: check after rounding
     if value <= 0.0:
-        return 0.1
+        return 0.01
     if value >= 1.0:
-        return 0.9
+        return 0.99
+
     return value
 
 
