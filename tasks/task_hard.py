@@ -168,11 +168,15 @@ def _score_category(agent_items: list, expected_items: list) -> tuple[float, flo
         if best < 0.3:
             hallucinations += 1
     precision = sum(prec_scores) / agent_weight_total
+    precision = max(0.01, min(0.99, precision))  # Clamp to valid range
 
     if precision + recall == 0:
-        f1 = 0.0
+        f1 = 0.01  # Changed from 0.0 to avoid boundary score
     else:
         f1 = 2 * precision * recall / (precision + recall)
+    
+    # Final clamp: ensure all returned values are strictly between 0.01 and 0.99
+    f1 = max(0.01, min(0.99, f1))
 
     return f1, precision, recall, hallucinations, missing_critical
 
@@ -260,13 +264,17 @@ def run_hard_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
 
     penalty = min(MAX_PENALTY, missing_critical * MISSING_CRITICAL_PENALTY + hallucinations * HALLUCINATION_PENALTY)
     total = total - penalty
-    total = round(min(0.99, max(0.01, total)), 3)  # Clamp strictly to (0.01, 0.99)
+    # Defensive multi-layer clamping to ensure no boundary scores
+    total = round(total, 4)  # Round first
+    total = max(0.01, min(0.99, total))  # Clamp to open interval (0.01, 0.99)
     
-    # Verify final clamping (safety check)
+    # Final verification: guarantee total is never exactly 0.0 or 1.0
     if total <= 0.0:
         total = 0.01
-    elif total >= 1.0:
+    if total >= 1.0:
         total = 0.99
+    # Triple-check after all operations
+    assert 0.01 <= total <= 0.99, f"Score {total} is outside valid range!"
 
     # Build feedback
     weighted_precision = sum(precision_scores[cat] * WEIGHTS[cat] for cat in WEIGHTS) / sum(WEIGHTS.values())
