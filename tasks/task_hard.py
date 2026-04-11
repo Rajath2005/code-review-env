@@ -34,6 +34,20 @@ MAX_PENALTY = 0.25
 LOGGER = logging.getLogger(__name__)
 
 
+def _clamp_score(score: float) -> float:
+    """Clamp score to open interval (0, 1) - strictly between 0 and 1."""
+    if score <= 0.0:
+        return 0.01
+    if score >= 1.0:
+        return 0.99
+    return round(score, 4)
+
+
+def _finalize(score: float, feedback: str, done: bool) -> tuple[float, str, bool]:
+    # Defensive clamp at the last possible moment.
+    return _clamp_score(score), feedback, done
+
+
 def _get_snippet(snippet_id: int) -> dict:
     for s in SNIPPETS:
         if s["id"] == snippet_id:
@@ -219,18 +233,18 @@ def run_hard_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
     # Parse JSON
     parsed = _extract_json(agent_response)
     if parsed is None:
-        score = 0.01  # Minimum valid score
-        return score, (
+        score = _clamp_score(0.01)  # Minimum valid score
+        return _finalize(score, (
             "Could not parse your response as JSON. "
             "Respond with: {\"bugs\": [...], \"security_issues\": [...], \"style_violations\": [...]}"
-        ), True
+        ), True)
 
     # Validate required keys
     required_keys = {"bugs", "security_issues", "style_violations"}
     missing = required_keys - set(parsed.keys())
     if missing:
-        score = 0.05  # Minimum valid score for missing keys
-        return score, f"Response is missing required keys: {missing}. Score capped at 0.05.", True
+        score = _clamp_score(0.05)  # Minimum valid score for missing keys
+        return _finalize(score, f"Response is missing required keys: {missing}. Score capped at 0.05.", True)
 
     # Score each category
     category_scores = {}
@@ -266,7 +280,7 @@ def run_hard_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
     total = total - penalty
     # Defensive multi-layer clamping to ensure no boundary scores
     total = round(total, 4)  # Round first
-    total = max(0.01, min(0.99, total))  # Clamp to open interval (0.01, 0.99)
+    total = _clamp_score(total)  # Clamp to open interval (0.01, 0.99)
     
     # Final verification: guarantee total is never exactly 0.0 or 1.0
     if total <= 0.0:
@@ -296,4 +310,4 @@ def run_hard_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
         feedback_parts.append(f"penalty: -{round(penalty, 2)}")
     feedback = f"Score {total:.2f} — " + " | ".join(feedback_parts)
 
-    return total, feedback, True
+    return _finalize(total, feedback, True)
