@@ -10,6 +10,7 @@ const API_BASE_URL = isHFSpace
 console.log(`🚀 App running at: ${API_BASE_URL}`);
 console.log(`📍 Hostname: ${window.location.hostname}`);
 
+
 const startButton = document.getElementById("start-review");
 const viewTasksButton = document.getElementById("view-tasks");
 const resetButton = document.getElementById("reset-btn");
