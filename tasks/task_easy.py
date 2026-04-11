@@ -95,11 +95,6 @@ def _log_metrics(score: float) -> None:
     )
 
 
-def _finalize(score: float, feedback: str, done: bool) -> tuple[float, str, bool]:
-    # Defensive clamp at the last possible moment.
-    return _clamp_score(score), feedback, done
-
-
 def run_easy_task(agent_response: str, snippet_id: int) -> tuple[float, str, bool]:
     snippet = _get_snippet(snippet_id)
     expected = _normalise(snippet["bug_type"])
@@ -110,13 +105,13 @@ def run_easy_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
     if response == expected or response in aliases:
         score = _clamp_score(1.0)
         _log_metrics(score)
-        return _finalize(score, f"Correct! The bug is: {snippet['bug_type']}", True)
+        return score, f"Correct! The bug is: {snippet['bug_type']}", True
 
     # 2. Synonym map
     if _check_synonym_map(response, expected):
         score = _clamp_score(1.0)
         _log_metrics(score)
-        return _finalize(score, f"Correct! The bug is: {snippet['bug_type']}", True)
+        return score, f"Correct! The bug is: {snippet['bug_type']}", True
 
     # 3. Close match (keyword overlap)
     stop = {"the", "a", "an", "is", "in", "on", "to", "of", "and", "or", "with", "error", "bug", "issue"}
@@ -134,21 +129,21 @@ def run_easy_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
     if best >= needed and response:
         score = _clamp_score(0.7)
         _log_metrics(score)
-        return _finalize(score, (
+        return score, (
             f"Partially correct. The exact bug type is: '{snippet['bug_type']}'"
-        ), True)
+        ), True
 
     # 4. Keyword match (weak signal)
     if response and best > 0:
         score = _clamp_score(0.4)
         _log_metrics(score)
-        return _finalize(score, (
+        return score, (
             f"Somewhat related. The exact bug type is: '{snippet['bug_type']}'"
-        ), True)
+        ), True
 
     score = _clamp_score(0.0)
     _log_metrics(score)
-    return _finalize(score, (
+    return score, (
         f"Incorrect. The bug type is: '{snippet['bug_type']}'. "
         f"Hint: look at control flow and data flow carefully."
-    ), True)
+    ), True

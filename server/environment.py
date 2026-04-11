@@ -173,7 +173,7 @@ class CodeReviewEnvironment(Environment):
             snippet_id=snippet["id"],
             current_snippet=snippet["code"],
             step_count=0,
-            last_reward=0.01,
+            last_reward=0.0,
             done=False,
         )
 
@@ -182,7 +182,7 @@ class CodeReviewEnvironment(Environment):
             task_name=task_name,
             instructions=INSTRUCTIONS[task_name],
             feedback=None,
-            reward=0.01,
+            reward=0.0,
             done=False,
         )
 

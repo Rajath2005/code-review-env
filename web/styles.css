@@ -36,7 +36,7 @@ body {
 .page {
   padding: 40px 20px 56px;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .page::before {

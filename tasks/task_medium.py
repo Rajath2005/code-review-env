@@ -178,11 +178,6 @@ def _log_metrics(passed: int, total: int, score: float) -> None:
     )
 
 
-def _finalize(score: float, feedback: str, done: bool) -> tuple[float, str, bool]:
-    # Defensive clamp at the last possible moment.
-    return _clamp_score(score), feedback, done
-
-
 def run_medium_task(agent_response: str, snippet_id: int) -> tuple[float, str, bool]:
     """
     Grade the agent's bug fix.
@@ -201,13 +196,13 @@ def run_medium_task(agent_response: str, snippet_id: int) -> tuple[float, str, b
     # Syntax check
     if not _parse_safe(code):
         score = _clamp_score(0.0)
-        return _finalize(score, "Your code has a syntax error and could not be parsed.", True)
+        return score, "Your code has a syntax error and could not be parsed.", True
 
     # No test cases for this snippet — provide partial credit for valid code
     if not test_cases:
         score = _clamp_score(0.4)
         _log_metrics(0, 0, score)
-        return _finalize(score, "No runnable tests for this snippet. Awarding partial credit for valid code.", True)
+        return score, "No runnable tests for this snippet. Awarding partial credit for valid code.", True
 
     result = _run_test_cases_safely(code, test_cases)
     status = result["status"]
@@ -217,20 +212,20 @@ def run_medium_task(agent_response: str, snippet_id: int) -> tuple[float, str, b
     if status == "syntax_error":
         score = _clamp_score(0.0)
         _log_metrics(0, total, score)
-        return _finalize(score, "Your code has a syntax error and could not be parsed.", True)
+        return score, "Your code has a syntax error and could not be parsed.", True
     if status == "timeout":
         score = _clamp_score(0.0)
         _log_metrics(0, total, score)
-        return _finalize(score, "Code execution timed out. Make sure it terminates quickly.", True)
+        return score, "Code execution timed out. Make sure it terminates quickly.", True
     if status in {"exec_error", "no_function"}:
         score = _clamp_score(0.0)
         _log_metrics(0, total, score)
-        return _finalize(score, f"Code could not be executed safely: {result['error']}", True)
+        return score, f"Code could not be executed safely: {result['error']}", True
 
     if total == 0:
         score = _clamp_score(0.4)
         _log_metrics(0, 0, score)
-        return _finalize(score, "No test cases available — partial credit awarded.", True)
+        return score, "No test cases available — partial credit awarded.", True
 
     ratio = passed / total
     reward = _clamp_score(round(ratio, 3))
@@ -241,4 +236,4 @@ def run_medium_task(agent_response: str, snippet_id: int) -> tuple[float, str, b
     else:
         feedback = f"{passed}/{total} test cases passed. Partial fix — some cases still fail."
 
-    return _finalize(reward, feedback, True)
+    return reward, feedback, True
