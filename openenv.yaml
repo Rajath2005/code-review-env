@@ -1,0 +1,27 @@
+name: "code-review-env"
+description: "OpenEnv environment for training RL agents on Python code review"
+version: "0.1.0"
+
+tasks:
+  - name: "bug_identification"
+    difficulty: "easy"
+    description: "Identify the bug type in a buggy Python snippet"
+  - name: "bug_fixing"
+    difficulty: "medium"
+    description: "Produce corrected Python code that passes all test cases"
+  - name: "full_review"
+    difficulty: "hard"
+    description: "Produce a full JSON review: bugs, security issues, style violations"
+
+benchmark:
+  name: "code-review-env"
+  
+server:
+  host: "0.0.0.0"
+  port: 7860
+  module: "server.app"
+  app: "app"
+
+inference:
+  script: "inference.py"
+  entry_point: "main"
