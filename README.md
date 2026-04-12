@@ -1,3 +1,15 @@
+---
+title: Code Review Agent (HF Space)
+emoji: 🧠
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
+> Lines above: [Hugging Face Space metadata](https://huggingface.co/docs/hub/spaces-config-reference) (must stay at the top of this file for the live Space). Everything from the next heading onward is the normal GitHub readme.
+
 # Code Review Agent — OpenEnv RL Benchmark
 
 > **An OpenEnv RL environment for training and benchmarking AI agents on Python code review.**
