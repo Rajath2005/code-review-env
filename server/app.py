@@ -21,6 +21,11 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 
+def clamp_reward(reward: float) -> float:
+    """Clamp reward to (0.01, 0.99) to satisfy Scaler validator."""
+    return max(0.01, min(0.99, float(reward)))
+
+
 from server.environment import (
     CodeReviewEnvironment,
     CodeReviewAction,
@@ -130,6 +135,7 @@ async def reset(request: ResetRequest = ResetRequest()):
     """
     try:
         obs = env.reset(task_name=request.task_name or "bug_identification")
+        obs.reward = clamp_reward(obs.reward)
         return obs.model_dump()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -146,6 +152,7 @@ async def step(request: StepRequest):
     try:
         action = CodeReviewAction(response=request.response)
         obs = env.step(action)
+        obs.reward = clamp_reward(obs.reward)
         return obs.model_dump()
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
