@@ -9,6 +9,8 @@ import urllib.request
 
 from openai import OpenAI
 
+from score_clamp import clamp_score
+
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN = os.getenv("HF_TOKEN")
@@ -30,33 +32,6 @@ SYSTEM_PROMPT = (
     "You are a senior software engineer. Carefully analyze the given Python code "
     "and return only the correct answer based on task instructions. Do not explain."
 )
-
-
-def safe_score(score: float) -> float:
-    """Clamp a score to the open interval (0, 1) as required by evaluation.
-    Must be strictly between 0 and 1 - not equal to 0.0 or 1.0.
-    """
-    try:
-        value = float(score)
-    except (TypeError, ValueError):
-        value = 0.01  # Default to minimum valid score
-
-    # First pass: extreme boundaries
-    if value <= 0.0:
-        return 0.01
-    if value >= 1.0:
-        return 0.99
-
-    # Round to avoid floating point edge cases
-    value = round(value, 4)
-
-    # Second pass: check after rounding
-    if value <= 0.0:
-        return 0.01
-    if value >= 1.0:
-        return 0.99
-
-    return value
 
 
 def post_json(path: str, payload: dict) -> dict:
@@ -98,28 +73,33 @@ def call_llm(obs: dict) -> str:
 
 
 def log_start(task: str):
-    print(f"[START] task={task} env=code-review-env model={MODEL_NAME}", flush=True)
+    print(f"[START] task={task}", flush=True)
 
 
-def clean_action(action: str) -> str:
-    cleaned = action.replace("\n", " ").replace("\r", " ")
-    cleaned = cleaned.replace('"', "\\\"")
-    return cleaned[:120]
-
-
-def log_step(step: int, action: str, reward: float, done: bool):
+def log_step(step: int, reward: float, done: bool):
     done_str = "true" if done else "false"
-    action_clean = clean_action(action)
-    print(
-        f"[STEP] step={step} action=\"{action_clean}\" "
-        f"reward={reward:.2f} done={done_str} error=null",
-        flush=True,
-    )
+    safe_r = clamp_score(reward)
+    if safe_r <= 0.01:
+        safe_r = 0.01
+    if safe_r >= 0.99:
+        safe_r = 0.99
+    print(f"[STEP] step={step} reward={safe_r:.4f} done={done_str}", flush=True)
 
 
 def log_end(success: bool, steps: int, rewards: list[float]):
     success_str = "true" if success else "false"
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
+    if rewards:
+        parts = []
+        for r in rewards:
+            sr = clamp_score(r)
+            if sr <= 0.01:
+                sr = 0.01
+            if sr >= 0.99:
+                sr = 0.99
+            parts.append(f"{sr:.2f}")
+        rewards_str = ",".join(parts)
+    else:
+        rewards_str = "0.01"
     print(
         f"[END] success={success_str} steps={steps} rewards={rewards_str}",
         flush=True,
@@ -139,30 +119,32 @@ def run_task(task_name: str) -> float:
         while True:
             action = call_llm(obs)
             obs = post_json("/step", {"response": action})
-            reward = float(obs.get("reward", 0.0))
+            raw_r = obs.get("reward", 0.01)
+            reward = clamp_score(raw_r)
             done = bool(obs.get("done", False))
             steps += 1
-            rewards.append(reward)
-            log_step(steps, action, reward, done)
+            rewards.append(clamp_score(reward))
+            log_step(steps, reward, done)
             if done:
                 break
 
-        final_reward = rewards[-1] if rewards else 0.0
-        task_score = safe_score(final_reward)
+        final_reward = rewards[-1] if rewards else 0.01
+        task_score = clamp_score(final_reward)
         success = task_score >= 0.7
         log_end(success, steps, rewards)
         return task_score
     except Exception:
         log_end(False, steps, rewards)
-        return safe_score(0.0)
+        return 0.01
 
 
 def main():
     scores: dict[str, float] = {}
     for task in TASKS:
         output_key = OUTPUT_TASK_KEYS.get(task, task)
-        scores[output_key] = safe_score(run_task(task))
+        scores[output_key] = clamp_score(run_task(task))
 
+    scores = {k: clamp_score(v) for k, v in scores.items()}
     print(json.dumps(scores), flush=True)
 
 

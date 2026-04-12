@@ -21,9 +21,12 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 
+from score_clamp import clamp_score
+
+
 def clamp_reward(reward: float) -> float:
     """Clamp reward to (0.01, 0.99) to satisfy Scaler validator."""
-    return max(0.01, min(0.99, float(reward)))
+    return clamp_score(reward)
 
 
 from server.environment import (

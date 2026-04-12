@@ -43,6 +43,7 @@ from data.snippets import SNIPPETS
 from tasks.task_easy import run_easy_task
 from tasks.task_medium import run_medium_task
 from tasks.task_hard import run_hard_task
+from score_clamp import clamp_score
 
 
 # ── Typed Models ──────────────────────────────────────────────────────────────
@@ -127,6 +128,10 @@ class CodeReviewEnvironment(Environment):
       full_review        (hard)   — full JSON audit
     """
 
+    def _clamp_reward(self, reward: float) -> float:
+        """Clamp reward to strictly (0.01, 0.99)."""
+        return clamp_score(reward)
+
     def __init__(self, seed: Optional[int] = None):
         """
         Initialize the environment.
@@ -182,7 +187,7 @@ class CodeReviewEnvironment(Environment):
             task_name=task_name,
             instructions=INSTRUCTIONS[task_name],
             feedback=None,
-            reward=0.0,
+            reward=self._clamp_reward(0.01),
             done=False,
         )
 
@@ -225,6 +230,7 @@ class CodeReviewEnvironment(Environment):
         if self._state.step_count >= MAX_STEPS:
             done = True
 
+        reward = self._clamp_reward(reward)
         self._state.last_reward = reward
         self._state.done = done
 

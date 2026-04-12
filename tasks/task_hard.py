@@ -22,6 +22,7 @@ import json
 import logging
 import re
 from data.snippets import SNIPPETS
+from score_clamp import clamp_score
 
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 SEVERITY_WEIGHT = {"high": 1.0, "medium": 0.7, "low": 0.4}
@@ -100,26 +101,26 @@ def _match_finding(agent_finding: dict, expected_findings: list[dict]) -> float:
         exp_words = set(exp_desc.split())
         stop = {"the", "a", "an", "is", "in", "on", "to", "of", "and", "or", "with", "—", "-"}
         overlap = (agent_words - stop) & (exp_words - stop)
-        desc_score = min(0.99, len(overlap) / max(len(exp_words - stop), 1))
-        desc_score = max(0.01, desc_score)  # Clamp to (0.01, 0.99)
+        desc_score = clamp_score(min(0.99, len(overlap) / max(len(exp_words - stop), 1)))
+        desc_score = clamp_score(max(0.01, desc_score))  # Clamp to (0.01, 0.99)
 
         # Severity match (clamp to range, not exact 0/1)
-        sev_score = 0.99 if agent_sev == exp_sev else 0.45
+        sev_score = clamp_score(0.99 if agent_sev == exp_sev else 0.45)
 
         # Line proximity (optional bonus) -- clamp away from exact 0/1
         line_score = 0.01
         if agent_line is not None and exp_line is not None:
             diff = abs(int(agent_line) - int(exp_line))
-            line_score = 0.99 if diff == 0 else (0.45 if diff <= 1 else 0.01)
+            line_score = clamp_score(0.99 if diff == 0 else (0.45 if diff <= 1 else 0.01))
 
         # Composite score: desc matters most (will be between 0.01 and 0.99)
         score = 0.6 * desc_score + 0.25 * sev_score + 0.15 * line_score
-        score = max(0.01, min(0.99, score))  # Final clamp
+        score = clamp_score(max(0.01, min(0.99, score)))  # Final clamp
 
         if desc_score > 0.3:  # only count if description is at least somewhat relevant
             best = max(best, score)
 
-    return best
+    return clamp_score(best)
 
 
 def _severity_weight(severity: str) -> float:
@@ -155,7 +156,7 @@ def _score_category(agent_items: list, expected_items: list) -> tuple[float, flo
         if _normalise_severity(exp.get("severity", "low")) == "high" and best < 0.5:
             missing_critical += 1
     recall = sum(recall_scores) / expected_weight_total
-    recall = max(0.01, min(0.99, recall))  # Clamp to valid range
+    recall = clamp_score(max(0.01, min(0.99, recall)))  # Clamp to valid range
 
     agent_weights = [_severity_weight(a.get("severity", "low")) for a in agent_items if isinstance(a, dict)]
     agent_weight_total = max(sum(agent_weights), 1e-6)
@@ -168,7 +169,7 @@ def _score_category(agent_items: list, expected_items: list) -> tuple[float, flo
         if best < 0.3:
             hallucinations += 1
     precision = sum(prec_scores) / agent_weight_total
-    precision = max(0.01, min(0.99, precision))  # Clamp to valid range
+    precision = clamp_score(max(0.01, min(0.99, precision)))  # Clamp to valid range
 
     if precision + recall == 0:
         f1 = 0.01  # Changed from 0.0 to avoid boundary score
@@ -176,9 +177,9 @@ def _score_category(agent_items: list, expected_items: list) -> tuple[float, flo
         f1 = 2 * precision * recall / (precision + recall)
     
     # Final clamp: ensure all returned values are strictly between 0.01 and 0.99
-    f1 = max(0.01, min(0.99, f1))
+    f1 = clamp_score(max(0.01, min(0.99, f1)))
 
-    return f1, precision, recall, hallucinations, missing_critical
+    return f1, clamp_score(precision), clamp_score(recall), hallucinations, missing_critical
 
 
 def _score_ordering(agent_items: list) -> float:
@@ -187,7 +188,7 @@ def _score_ordering(agent_items: list) -> float:
     Returns score strictly between 0.01 and 0.99 (never 0.0 or 1.0).
     """
     if len(agent_items) <= 1:
-        return 0.99  # Perfect ordering for single/empty items
+        return clamp_score(0.99)  # Perfect ordering for single/empty items
 
     severities = [SEVERITY_ORDER.get(_normalise_severity(a.get("severity", "low")), 2)
                   for a in agent_items if isinstance(a, dict)]
@@ -200,7 +201,7 @@ def _score_ordering(agent_items: list) -> float:
     # Calculate score: 0.99 for perfect, down to 0.01 for worst
     score = 1.0 - violations / max(1, len(severities))
     # Clamp strictly to (0.01, 0.99)
-    score = max(0.01, min(0.99, round(score, 3)))
+    score = clamp_score(max(0.01, min(0.99, round(score, 3))))
     return score
 
 
@@ -244,6 +245,9 @@ def run_hard_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
         if not isinstance(agent_items, list):
             agent_items = []
         score, precision, recall, hallucinated, missing = _score_category(agent_items, expected_items)
+        score = clamp_score(score)
+        precision = clamp_score(precision)
+        recall = clamp_score(recall)
         category_scores[cat] = (score, weight)
         precision_scores[cat] = precision
         recall_scores[cat] = recall
@@ -255,8 +259,8 @@ def run_hard_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
     ordering_scores = []
     for cat in ["bugs", "security_issues", "style_violations"]:
         cat_items = [item for item in parsed.get(cat, []) if isinstance(item, dict)]
-        ordering_scores.append(_score_ordering(cat_items))
-    ordering_score = sum(ordering_scores) / len(ordering_scores)
+        ordering_scores.append(clamp_score(_score_ordering(cat_items)))
+    ordering_score = clamp_score(sum(ordering_scores) / len(ordering_scores))
 
     # Weighted total
     total = sum(score * weight for score, weight in category_scores.values())
@@ -264,17 +268,8 @@ def run_hard_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
 
     penalty = min(MAX_PENALTY, missing_critical * MISSING_CRITICAL_PENALTY + hallucinations * HALLUCINATION_PENALTY)
     total = total - penalty
-    # Defensive multi-layer clamping to ensure no boundary scores
-    total = round(total, 4)  # Round first
-    total = max(0.01, min(0.99, total))  # Clamp to open interval (0.01, 0.99)
-    
-    # Final verification: guarantee total is never exactly 0.0 or 1.0
-    if total <= 0.0:
-        total = 0.01
-    if total >= 1.0:
-        total = 0.99
-    # Triple-check after all operations
-    assert 0.01 <= total <= 0.99, f"Score {total} is outside valid range!"
+    total = round(total, 4)
+    total = clamp_score(total)
 
     # Build feedback
     weighted_precision = sum(precision_scores[cat] * WEIGHTS[cat] for cat in WEIGHTS) / sum(WEIGHTS.values())

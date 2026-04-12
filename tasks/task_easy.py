@@ -13,6 +13,7 @@ Scoring:
 import logging
 import re
 from data.snippets import SNIPPETS
+from score_clamp import clamp_score
 
 SYNONYM_MAP = {
     "off by one error":              ["off by one", "fence post", "fencepost", "oboe", "index out of range", "range error", "array index error"],
@@ -74,12 +75,7 @@ def _check_synonym_map(response: str, expected: str) -> bool:
 
 def _clamp_score(score: float) -> float:
     """Clamp score to open interval (0, 1) - strictly between 0 and 1."""
-    if score <= 0.0:
-        return 0.01
-    elif score >= 1.0:
-        return 0.99
-    else:
-        return round(score, 2)
+    return clamp_score(score)
 
 
 def _log_metrics(score: float) -> None:
@@ -103,13 +99,13 @@ def run_easy_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
 
     # 1. Exact match
     if response == expected or response in aliases:
-        score = _clamp_score(1.0)
+        score = _clamp_score(0.99)
         _log_metrics(score)
         return score, f"Correct! The bug is: {snippet['bug_type']}", True
 
     # 2. Synonym map
     if _check_synonym_map(response, expected):
-        score = _clamp_score(1.0)
+        score = _clamp_score(0.99)
         _log_metrics(score)
         return score, f"Correct! The bug is: {snippet['bug_type']}", True
 
@@ -141,7 +137,7 @@ def run_easy_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
             f"Somewhat related. The exact bug type is: '{snippet['bug_type']}'"
         ), True
 
-    score = _clamp_score(0.0)
+    score = _clamp_score(0.01)
     _log_metrics(score)
     return score, (
         f"Incorrect. The bug type is: '{snippet['bug_type']}'. "

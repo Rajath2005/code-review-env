@@ -18,6 +18,7 @@ import re
 import threading
 from typing import Any
 from data.snippets import SNIPPETS
+from score_clamp import clamp_score
 
 LOGGER = logging.getLogger(__name__)
 
@@ -156,12 +157,7 @@ def _run_test_cases_safely(code: str, test_cases: list) -> dict:
 
 def _clamp_score(score: float) -> float:
     """Clamp score to open interval (0, 1) - strictly between 0 and 1."""
-    if score <= 0.0:
-        return 0.01
-    elif score >= 1.0:
-        return 0.99
-    else:
-        return round(score, 3)
+    return clamp_score(score)
 
 
 def _log_metrics(passed: int, total: int, score: float) -> None:
@@ -195,7 +191,7 @@ def run_medium_task(agent_response: str, snippet_id: int) -> tuple[float, str, b
 
     # Syntax check
     if not _parse_safe(code):
-        score = _clamp_score(0.0)
+        score = _clamp_score(0.01)
         return score, "Your code has a syntax error and could not be parsed.", True
 
     # No test cases for this snippet — provide partial credit for valid code
@@ -210,15 +206,15 @@ def run_medium_task(agent_response: str, snippet_id: int) -> tuple[float, str, b
     total = result["total"]
 
     if status == "syntax_error":
-        score = _clamp_score(0.0)
+        score = _clamp_score(0.01)
         _log_metrics(0, total, score)
         return score, "Your code has a syntax error and could not be parsed.", True
     if status == "timeout":
-        score = _clamp_score(0.0)
+        score = _clamp_score(0.01)
         _log_metrics(0, total, score)
         return score, "Code execution timed out. Make sure it terminates quickly.", True
     if status in {"exec_error", "no_function"}:
-        score = _clamp_score(0.0)
+        score = _clamp_score(0.01)
         _log_metrics(0, total, score)
         return score, f"Code could not be executed safely: {result['error']}", True
 
@@ -227,8 +223,8 @@ def run_medium_task(agent_response: str, snippet_id: int) -> tuple[float, str, b
         _log_metrics(0, 0, score)
         return score, "No test cases available — partial credit awarded.", True
 
-    ratio = passed / total
-    reward = _clamp_score(round(ratio, 3))
+    ratio = passed / total if total > 0 else 0.0
+    reward = _clamp_score(round(ratio, 4))
     _log_metrics(passed, total, reward)
 
     if reward >= 0.98:
