@@ -16,15 +16,10 @@ from data.snippets import SNIPPETS
 
 def check_score(name: str, score: float) -> bool:
     """Verify score is strictly between 0 and 1."""
-    if score <= 0.0:
-        print(f"  ❌ {name}: Score is {score} (violates: must be > 0.0)")
+    if not (0.0 < score < 1.0):
+        print(f"  ❌ {name}: Score {score} violates (0,1) range")
         return False
-    if score >= 1.0:
-        print(f"  ❌ {name}: Score is {score} (violates: must be < 1.0)")
-        return False
-    if isinstance(score, float) and (score == int(score)):
-        print(f"  ⚠️  {name}: Score is {score} (integer, might be problematic)")
-        return False
+    # Allow rounded floats (e.g. 0.70, 0.99) - no integer rejection
     print(f"  ✅ {name}: {score:.4f}")
     return True
 
@@ -37,10 +32,10 @@ def test_easy_task():
     
     all_pass = True
     
-    # Test with correct answer
-    for snippet in SNIPPETS[:3]:
+    # Test with correct gold answer
+    for snippet in SNIPPETS[:5]:
         score, feedback, done = run_easy_task(snippet["bug_type"], snippet["id"])
-        if not check_score(f"Easy-{snippet['id']} (correct)", score):
+        if not check_score(f"Easy-{snippet['id']} (gold)", score):
             all_pass = False
     
     # Test with incorrect answers
@@ -60,11 +55,11 @@ def test_medium_task():
     
     all_pass = True
     
-    # Test with correct fixed code
-    for snippet in SNIPPETS[:3]:
+    # Test with correct gold fixed code
+    for snippet in SNIPPETS[:5]:
         if snippet.get("fixed_code"):
             score, feedback, done = run_medium_task(snippet["fixed_code"], snippet["id"])
-            if not check_score(f"Medium-{snippet['id']} (correct)", score):
+            if not check_score(f"Medium-{snippet['id']} (gold)", score):
                 all_pass = False
     
     # Test with incorrect code
@@ -84,12 +79,12 @@ def test_hard_task():
     
     all_pass = True
     
-    # Test with correct review
-    for snippet in SNIPPETS[:2]:
+    # Test with correct gold review
+    for snippet in SNIPPETS[:5]:
         if snippet.get("review"):
             response = json.dumps(snippet["review"])
             score, feedback, done = run_hard_task(response, snippet["id"])
-            if not check_score(f"Hard-{snippet['id']} (correct)", score):
+            if not check_score(f"Hard-{snippet['id']} (gold)", score):
                 all_pass = False
     
     # Test with invalid JSON
