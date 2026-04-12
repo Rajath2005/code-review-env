@@ -1,13 +1,18 @@
 """
 Task: Bug Identification (Easy)
 --------------------------------
-Agent receives a buggy Python snippet.
-Agent must respond with the bug TYPE - a short phrase describing what's wrong.
+Real-world-style scenario: the agent sees production-like Python with a single dominant
+defect class and must reply with only the **bug type** phrase (e.g. off-by-one, injection).
 
-Scoring:
-  1.0  - exact match, known alias, or synonym map hit
-  0.7  - partial keyword overlap (agent got the gist)
-  0.0  - completely wrong or empty
+Scoring (conceptual bands; all values pass through clamp_score for strict (0,1) rewards):
+  ~1.0  — exact match, known alias, or synonym-map hit
+  ~0.7  — partial keyword overlap (right idea, wrong wording)
+  ~0.0  — wrong or empty (mapped to a small positive floor at the API)
+
+Edge cases handled below:
+  - empty / whitespace-only answers (normalised then scored as incorrect band)
+  - punctuation and casing noise (normalised before match)
+  - unknown snippet_id (raises ValueError — environment should only pass valid ids)
 """
 
 import logging
@@ -92,6 +97,7 @@ def _log_metrics(score: float) -> None:
 
 
 def run_easy_task(agent_response: str, snippet_id: int) -> tuple[float, str, bool]:
+    # Grading pipeline: normalise → exact/alias/synonym → keyword overlap bands → clamp_score.
     snippet = _get_snippet(snippet_id)
     expected = _normalise(snippet["bug_type"])
     aliases = [_normalise(a) for a in snippet["bug_type_aliases"]]

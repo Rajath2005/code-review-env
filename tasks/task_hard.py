@@ -1,21 +1,22 @@
 """
 Task: Full Code Review (Hard)
 ------------------------------
-Agent must produce a structured JSON review covering:
-  - bugs
-  - security_issues
-  - style_violations
+Structured audit a human reviewer might leave on a PR: JSON with bugs,
+security_issues, and style_violations lists.
 
-Each item needs: line (int), severity ('high'/'medium'/'low'), description (str)
-Items must be ordered by severity (high → medium → low) within each category.
+Each item needs: line (int), severity ('high'/'medium'/'low'), description (str).
+Lists should be ordered high → medium → low (ordering contributes to score).
 
-Scoring breakdown (total 1.0):
-  0.40 — bugs found (precision + recall)
-  0.35 — security_issues found
-  0.15 — style_violations found
-  0.10 — correct severity ordering within each category
+Reward logic (weights — see WEIGHTS / ORDERING_WEIGHT constants below):
 
-Partial credit: each matched finding adds to the score proportionally.
+  - Bug findings contribute ~40% of the weighted total (category F1-style blend).
+  - Security findings contribute ~35%.
+  - Style findings contribute ~15%.
+  - Correct severity ordering within each category contributes ~10%.
+  - Penalties (missing critical, likely hallucinations) are capped by MAX_PENALTY
+    before the final clamp_score on the episode reward.
+
+Partial credit: each matched finding nudges category scores; totals are always clamped.
 """
 
 import json
@@ -26,11 +27,12 @@ from score_clamp import clamp_score
 
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 SEVERITY_WEIGHT = {"high": 1.0, "medium": 0.7, "low": 0.4}
+# Category weights for the hard-task total (before ordering bonus and penalties):
 WEIGHTS = {"bugs": 0.40, "security_issues": 0.35, "style_violations": 0.15}
-ORDERING_WEIGHT = 0.10
+ORDERING_WEIGHT = 0.10  # bonus weight for per-list severity monotonicity
 MISSING_CRITICAL_PENALTY = 0.05
 HALLUCINATION_PENALTY = 0.03
-MAX_PENALTY = 0.25
+MAX_PENALTY = 0.25  # cap so penalties cannot zero-out legitimate partial credit
 
 LOGGER = logging.getLogger(__name__)
 
@@ -209,8 +211,14 @@ def run_hard_task(agent_response: str, snippet_id: int) -> tuple[float, str, boo
     """
     Grade the agent's full code review.
 
+    Edge cases handled on the path below:
+      - non-JSON or fenced JSON (_extract_json)
+      - missing top-level keys vs required_keys
+      - non-list category values coerced to []
+      - malformed finding dicts skipped or down-weighted in matchers
+
     Returns:
-        reward (float): 0.0 – 1.0
+        reward (float): strictly inside (0, 1) after clamp_score
         feedback (str): detailed breakdown
         done (bool): True once graded
     """

@@ -1,21 +1,25 @@
-# Code Review Environment - Testing Guide
+# Code review environment — testing guide
 
-## 🎯 Why You're Getting Reward: 0.00
+## Low rewards versus incorrect responses
 
-Your UI is **working correctly**. The **reward 0.00 means your answer is INCORRECT**, not that the system is broken.
+A **low reward** usually means the submitted response did not satisfy the grader for the selected task (wrong format, wrong content, or failed tests). It does not by itself indicate a broken UI or API.
+
+**API note:** Rewards are clamped to a strict open interval `(0, 1)` (implementation uses bounds away from `0.0` and `1.0`; see `score_clamp.py`). The UI may display values such as `0.00` or `1.00` due to rounding; interpret them as **low** or **high** bands.
 
 ---
 
-## 📋 Task-Specific Response Formats
+## Task-specific response formats
 
-### **TASK 1: Bug Identification (Easy) ✓ SIMPLEST**
+### Task 1: Bug identification (easy)
 
-**What to do:**
-- Read the buggy code
-- Respond with ONLY the bug type (short phrase)
-- **No explanation, no markdown, nothing else**
+**Requirements**
 
-**Examples of CORRECT answers:**
+- Read the snippet.
+- Reply with **only** the bug type as a short phrase.
+- No explanations, markdown, or extra text.
+
+**Correct examples**
+
 ```
 off-by-one error
 division by zero
@@ -25,75 +29,77 @@ command injection
 null pointer dereference
 ```
 
-**Examples of WRONG answers:**
+**Incorrect examples**
+
 ```
-❌ There is an off-by-one error
-❌ off-by-one
-❌ The bug is off-by-one error
-❌ off by one error (might work if in synonym list)
+There is an off-by-one error
+off-by-one
+The bug is off-by-one error
+off by one error
 ```
 
-**Scoring:**
-- ✅ 1.0 = Exact match + known aliases
-- 🟡 0.7 = Partial keyword overlap
-- ❌ 0.0 = Completely wrong
+The last form may score if it matches a synonym list, but prefer the canonical phrasing from the dataset when known.
 
-**SNIPPET 0 (available on load):**
+**Scoring (conceptual)**
+
+- High band: exact or alias match.
+- Mid band: partial keyword overlap.
+- Low band: wrong or empty (then clamped for API output).
+
+**Snippet 0 (initial load example)**
+
 ```python
 def sum_list(nums):
     total = 0
-    for i in range(len(nums) + 1):  # ← BUG HERE
+    for i in range(len(nums) + 1):  # bug: off-by-one iteration bound
         total += nums[i]
     return total
 ```
-✅ **CORRECT ANSWER:** `off-by-one error`
+
+**Expected answer:** `off-by-one error`
 
 ---
 
-### **TASK 2: Bug Fixing (Medium) ⚠️ HARDER**
+### Task 2: Bug fixing (medium)
 
-**What to do:**
-- Read the buggy code
-- Respond with ONLY the corrected Python function
-- **No markdown fences, no explanation**
-- The fixed code must pass all test cases
+**Requirements**
 
-**Format:**
+- Reply with **only** the corrected Python for the requested function.
+- No markdown fences, no prose before or after the code.
+- The implementation must pass all snippet-specific unit tests in the grader.
+
+**Correct shape**
+
 ```
 def function_name(args):
-    # corrected code here
+    # body
     return value
 ```
 
-**WRONG format:**
-```
-❌ ```python
-def sum_list(nums):
-    ...
-```
+**Incorrect patterns**
 
-❌ Here's the fix:
-def sum_list(nums):
-    ...
-```
+- Wrapping code in ` ```python ` fences.
+- Explanatory text before or after the function.
 
-**Scoring:**
-- ✅ 1.0 = All test cases pass
-- 🟡 0.6-0.9 = Majority pass (proportional)
-- 🟡 0.3 = Code runs but fails tests
-- ❌ 0.0 = Syntax error / exception
+**Scoring (conceptual)**
 
-**SNIPPET 0 - TEST CASES:**
-```python
-Input: [1, 2, 3]     → Expected: 6
-Input: [10, 20]      → Expected: 30
-Input: [0]           → Expected: 0
-Input: []            → Expected: 0
-```
+- High band: all tests pass.
+- Mid band: proportional pass rate where supported.
+- Low band: syntax errors, timeouts, or sandbox failures.
 
-❌ **WRONG:** Just copying the buggy code (will get 0.0)
+**Snippet 0 — test intent (illustrative)**
 
-✅ **CORRECT:**
+| Input | Expected output |
+|--------|-----------------|
+| `[1, 2, 3]` | `6` |
+| `[10, 20]` | `30` |
+| `[0]` | `0` |
+| `[]` | `0` |
+
+Resubmitting the buggy source unchanged yields a low score.
+
+**Example fix**
+
 ```
 def sum_list(nums):
     total = 0
@@ -104,15 +110,16 @@ def sum_list(nums):
 
 ---
 
-### **TASK 3: Full Code Review (Hard) 🔥 MOST COMPLEX**
+### Task 3: Full code review (hard)
 
-**What to do:**
-- Read the code carefully
-- Respond with ONLY a JSON object
-- **No markdown, no explanation**
-- Structure: `{"bugs": [...], "security_issues": [...], "style_violations": [...]}`
+**Requirements**
 
-**Format per finding:**
+- Reply with **only** a single JSON object.
+- No markdown, no commentary.
+- Top-level keys: `bugs`, `security_issues`, `style_violations` (each a list of findings).
+
+**Finding object shape**
+
 ```json
 {
   "line": 3,
@@ -121,39 +128,36 @@ def sum_list(nums):
 }
 ```
 
-**WRONG Format:**
-```
-❌ ```json
-{
-  ...
-}
-```
+**Incorrect patterns**
 
-❌ The bugs are:
-- Line 3: ...
+- JSON inside markdown code fences only (fences must not be sent as the response body if the grader expects raw JSON).
+- Bulleted prose instead of structured lists.
+- Lists of plain strings instead of objects with `line`, `severity`, `description`.
 
-❌ {"bugs": ["off-by-one error"]}  (missing structure)
-```
+**Severity values**
 
-**Severity levels:**
-- `"high"` — Critical bug or security issue
-- `"medium"` — Important but not critical
-- `"low"` — Minor, style, or optimization
+- `"high"` — critical defect or security issue.
+- `"medium"` — important but not catastrophic.
+- `"low"` — style, maintainability, or minor issues.
 
-**Scoring breakdown:**
-- 40% — Bugs found (precision + recall)
-- 35% — Security issues found
-- 15% — Style violations found
-- 10% — Correct severity ordering
+**Category weights (hard task, high level)**
 
-**SNIPPET 0 - EXPECTED REVIEW:**
+- Bugs: approximately 40%.
+- Security issues: approximately 35%.
+- Style violations: approximately 15%.
+- Severity ordering: approximately 10%.
+
+See `tasks/task_hard.py` for exact constants.
+
+**Snippet 0 — reference-style JSON**
+
 ```json
 {
   "bugs": [
     {
       "line": 3,
       "severity": "high",
-      "description": "range(len(nums) + 1) causes IndexError on last iteration"
+      "description": "range(len(nums) + 1) causes IndexError on the last iteration"
     }
   ],
   "security_issues": [],
@@ -161,7 +165,7 @@ def sum_list(nums):
     {
       "line": 3,
       "severity": "low",
-      "description": "Use enumerate() or sum() instead of manual index loop"
+      "description": "Use enumerate() or sum() instead of a manual index loop"
     }
   ]
 }
@@ -169,92 +173,66 @@ def sum_list(nums):
 
 ---
 
-## ✅ Step-by-Step Testing
+## Manual test procedure
 
-### **Test 1: Easy Task (Bug Identification)**
+### Test 1: Easy task
 
-1. Open the UI in browser
-2. Select: **"Bug Identification (Easy)"**
-3. Click: **"Start Review"** (green button)
-4. You'll see: A buggy Python snippet
-5. **Look for the bug type** (from the list above)
-6. Type your answer in the textarea
-7. Click: **"Submit Response"**
-8. **Check Result:**
-   - ✅ If correct → Status shows "Correct", Reward shows 1.00
-   - ❌ If wrong → Status shows "Incorrect", Reward shows 0.00
+1. Open the Space or local UI.
+2. Select **Bug identification (easy)**.
+3. Start an episode (**Start review** or equivalent).
+4. Submit only the bug-type phrase.
+5. Inspect feedback and reward: high band implies a match to expected labels; low band implies mismatch or formatting issues.
 
-### **Test 2: Medium Task (Bug Fixing)**
+### Test 2: Medium task
 
-1. Select: **"Bug Fixing (Medium)"**
-2. Click: **"Start Review"**
-3. You'll see: A buggy function with a note about test cases
-4. **Write the corrected code** (no markdown, just code)
-5. Click: **"Submit Response"**
-6. **Check Result:**
-   - ✅ If all tests pass → Reward 1.00
-   - 🟡 If partial pass → Reward 0.6-0.9
-   - ❌ If syntax error → Reward 0.0
+1. Select **Bug fixing (medium)**.
+2. Start an episode.
+3. Paste a complete corrected function with no markdown wrappers.
+4. Submit and inspect reward: proportional to tests passed; syntax errors map to the low band.
 
-### **Test 3: Hard Task (Full Review)**
+### Test 3: Hard task
 
-1. Select: **"Full Review (Hard)"**
-2. Click: **"Start Review"**
-3. **Analyze the code** for:
-   - Bugs (logic errors, runtime errors)
-   - Security issues (injection, unsafe operations)
-   - Style violations (inefficiency, bad practices)
-4. **Write JSON response** with all three categories
-5. Click: **"Submit Response"**
-6. **Check Result:**
-   - ✅ If you found all issues → High reward
-   - 🟡 If you found some → Medium reward
-   - ❌ If invalid JSON → Reward 0.0
+1. Select **Full review (hard)**.
+2. Start an episode.
+3. Emit valid JSON with all three categories populated as required.
+4. Submit and inspect reward: depends on overlap with gold lists, ordering, and validity constraints.
 
 ---
 
-## 🐛 Common Issues & Fixes
+## Common issues
 
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| Reward 0.00 always | Answer format wrong | Read task format carefully above |
-| Reward 0.00 always | Answer is empty | Make sure you type something |
-| Reward 0.00 always | Using markdown in medium/hard | Remove ``` fences |
-| Episode Incorrect | Syntax error in code (medium) | Check Python syntax |
-| No reward appearing | API not responding | Check browser console (F12) |
-| Episode Complete | Already submitted once | Click "Reset" button |
-
----
-
-## 🔍 Debug (Browser Console)
-
-Open **F12 → Console** and check for errors:
-
-```javascript
-// Should see: POST to /step endpoint
-// Should see: Response with reward field
-```
-
-If you see network errors:
-- ❌ API might be down
-- ❌ CORS might be blocking requests
-- ❌ Wrong URL in API_BASE_URL
+| Symptom | Likely cause | Mitigation |
+|---------|--------------|------------|
+| Persistently low reward | Wrong output shape for the task | Reread the format section for that task |
+| Persistently low reward | Empty submission | Ensure non-empty input |
+| Persistently low reward | Markdown fences on medium/hard | Send raw code or raw JSON only |
+| Episode ends immediately with errors | Python syntax error on medium | Validate locally before submit |
+| No response in UI | Network or server error | Browser devtools: Network tab and console |
+| Cannot submit second answer | Episode already terminal | Use **Reset** to start a new episode |
 
 ---
 
-## ✨ UI Checks (After CSS Fixes)
+## Browser debugging
 
-- [ ] No text overlapping in Result panel ✓
-- [ ] Feedback text wraps cleanly ✓
-- [ ] Reward value is visible and readable ✓
-- [ ] Status pill shows correct status ✓
-- [ ] Code snippets scroll properly ✓
-- [ ] Layout is clean and professional ✓
+Open developer tools (F12), **Console** and **Network** tabs:
+
+- Confirm `POST` requests to `/step` return HTTP 200 and a JSON body containing `reward`.
+- On failure, verify `API_BASE_URL` (if configurable) points at the intended host.
 
 ---
 
-## 📌 Summary
+## UI regression checklist
 
-**Your system is working correctly!** The 0.00 reward means you're just entering the wrong answer format or wrong logic. Use the examples above to understand what each task expects, and you'll get positive rewards.
+After layout or CSS changes, confirm:
 
-🎉 **Now try again with the correct formats!**
+- [ ] Result panel text does not overlap other panels.
+- [ ] Feedback wraps without clipping.
+- [ ] Reward remains readable.
+- [ ] Status indicator matches grader outcome.
+- [ ] Long snippets scroll inside their container.
+
+---
+
+## Summary
+
+Low rewards typically indicate **format or content mismatch** with the task grader. Use the examples above, align responses with `score_clamp.py` / API semantics, and validate medium-task code locally when possible.

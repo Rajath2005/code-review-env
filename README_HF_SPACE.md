@@ -1,6 +1,5 @@
 ---
 title: Code Review Agent
-emoji: 🧠
 colorFrom: blue
 colorTo: green
 sdk: docker
@@ -11,111 +10,91 @@ tags:
   - code-review
 ---
 
-# 🎯 Code Review Agent — OpenEnv RL Environment
+# Code Review Agent — OpenEnv RL environment
 
-**Live Demo: https://BugHunter28-code-review-env.hf.space**
+**Live demo:** https://BugHunter28-code-review-env.hf.space
 
-## ⚡ Quick Links
+## Quick links
 
-| Link | Purpose |
-|------|---------|
-| **[🌐 Live UI](https://BugHunter28-code-review-env.hf.space)** | Interactive demo - try it now! |
-| **[📚 GitHub (Master)](https://github.com/Rajath2005/code-review-env/tree/master)** | Source code & documentation |
-| **[📊 Evaluation Guide](https://github.com/Rajath2005/code-review-env/blob/master/EVALUATION_RESULTS.md)** | Baseline results & metrics |
-| **[📖 Full README](https://github.com/Rajath2005/code-review-env)** | Complete documentation |
+| Resource | Description |
+|----------|-------------|
+| [Live UI](https://BugHunter28-code-review-env.hf.space) | Interactive Space interface |
+| [GitHub (default branch)](https://github.com/Rajath2005/code-review-env/tree/master) | Source and full documentation |
+| [Evaluation results](https://github.com/Rajath2005/code-review-env/blob/master/EVALUATION_RESULTS.md) | Baseline metrics and methodology |
+| [Main README](https://github.com/Rajath2005/code-review-env) | Problem statement, reward design, tasks, reproducibility |
 
----
+## Overview
 
-## 🚀 What Is This?
+OpenEnv-compatible reinforcement learning environment for Python code review. Three tasks with increasing scope:
 
-An **OpenEnv RL environment** for training AI agents to perform Python code review. Three difficulty levels:
+- **Easy — Bug identification:** respond with the bug type as a short phrase.
+- **Medium — Bug fixing:** respond with corrected Python that passes snippet-specific tests.
+- **Hard — Full review:** respond with structured JSON (`bugs`, `security_issues`, `style_violations`).
 
-- 🟢 **Easy**: Bug Identification (name the bug type)
-- 🟡 **Medium**: Bug Fixing (produce corrected code)
-- 🔴 **Hard**: Full Review (JSON audit with bugs, security, style)
+## Interactive demo
 
----
+1. Select a task (easy, medium, or hard).
+2. Use **Reset** to load a code snippet.
+3. Submit a response.
+4. Inspect the returned reward (API values are strictly inside the open interval `(0, 1)` per `score_clamp.py`).
 
-## 🎮 Interactive Demo
-
-**Try it here**: https://BugHunter28-code-review-env.hf.space
-
-1. Select a task (Easy/Medium/Hard)
-2. Click "Reset" to load a code snippet
-3. Submit your response
-4. Get immediate **reward score** (0.0 - 1.0)
-
----
-
-## 📊 Baseline Evaluation
+## Baseline evaluation
 
 | Agent | Easy | Medium | Hard | Overall |
 |-------|------|--------|------|---------|
 | Random | 0.0 | 0.0 | 0.4 | 0.13 |
-| Baseline Heuristic | 1.0 | 0.0 | 0.37 | 0.46 |
-| Gold (Oracle) | 1.0 | 0.0 | 1.0 | 0.67 |
+| Baseline heuristic | 1.0 | 0.0 | 0.37 | 0.46 |
+| Gold (oracle) | 1.0 | 0.0 | 1.0 | 0.67 |
 
-👉 See full analysis: [EVALUATION_RESULTS.md](https://github.com/Rajath2005/code-review-env/blob/master/EVALUATION_RESULTS.md)
+See [EVALUATION_RESULTS.md](https://github.com/Rajath2005/code-review-env/blob/master/EVALUATION_RESULTS.md) for methodology and reproduction commands.
 
----
-
-## 🔗 API Endpoints
+## API examples
 
 ```bash
-# Health check
 curl https://bughunter28-code-review-env.hf.space/health
 
-# Start episode
 curl -X POST https://bughunter28-code-review-env.hf.space/reset \
   -H "Content-Type: application/json" \
   -d '{"task_name": "bug_identification"}'
 
-# Submit action
 curl -X POST https://bughunter28-code-review-env.hf.space/step \
   -H "Content-Type: application/json" \
   -d '{"response": "off-by-one error"}'
 ```
 
----
-
-## 📋 Repository Structure
+## Repository layout
 
 ```
 code-review-env/
-├── script.benchmark.py         # Multi-agent evaluation
-├── EVALUATION_RESULTS.md       # Baseline metrics
-├── README.md                   # Full documentation
+├── scripts/
+│   └── benchmark.py
+├── EVALUATION_RESULTS.md
+├── README.md
 ├── server/
-│   ├── app.py                 # FastAPI server
-│   └── environment.py         # RL environment
+│   ├── app.py
+│   └── environment.py
 ├── tasks/
-│   ├── task_easy.py          # Bug identification
-│   ├── task_medium.py        # Bug fixing  
-│   └── task_hard.py          # Full review
+│   ├── task_easy.py
+│   ├── task_medium.py
+│   └── task_hard.py
 └── web/
-    ├── index.html            # UI interface
-    ├── script.js             # JavaScript logic
-    └── styles.css            # Styling
+    ├── index.html
+    ├── script.js
+    └── styles.css
 ```
 
----
+## Evaluation criteria
 
-## 🎓 For Judges
+- OpenEnv-style observation, action, and reward per step.
+- Deterministic grading for a fixed snippet and response string; optional seeding for episode sampling.
+- Automated benchmarking via `scripts/benchmark.py`.
+- Web UI for manual validation.
+- Open source on GitHub (default branch).
 
-✅ **Environment**: Proper OpenEnv with state/action/reward  
-✅ **Reproducibility**: Seed-based deterministic scoring  
-✅ **Evaluation**: Automated benchmarking with baselines  
-✅ **UI**: Interactive demo for manual testing  
-✅ **Code**: Open source on GitHub master branch  
+## Support
 
----
+- **Issues:** [GitHub Issues](https://github.com/Rajath2005/code-review-env/issues)
+- **Documentation:** [Main README](https://github.com/Rajath2005/code-review-env)
+- **Training / evaluation:** `python scripts/benchmark.py` or integrate a custom agent as described in the main README.
 
-## 📞 Support
-
-- **Issues?** → Check [GitHub Issues](https://github.com/Rajath2005/code-review-env/issues)
-- **Questions?** → See [Full README](https://github.com/Rajath2005/code-review-env)
-- **Want to train?** → Use `python scripts/benchmark.py` or create custom agents
-
----
-
-**Made for OpenEnv Hackathon 2026** 🏆
+Prepared for the OpenEnv hackathon (2026).

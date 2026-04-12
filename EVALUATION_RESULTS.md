@@ -1,27 +1,25 @@
-# Evaluation Results — Code Review Environment
+# Evaluation results — code review environment
 
 ## Overview
 
-This document contains baseline evaluation results for the code-review-env using multiple reference agents. These results demonstrate:
+Baseline evaluation results for `code-review-env` using multiple reference agents. These runs show:
 
-1. ✅ The environment provides **meaningful training signal** (different agents score differently)
-2. ✅ Grading is **deterministic and reproducible** (same seed → same results)
-3. ✅ **Dense rewards** are provided at every step (agents can learn efficiently)
+1. The environment assigns **different scores to different policies** (non-degenerate signal).
+2. Grading is **deterministic for a fixed seed** and fixed agent behavior.
+3. **Dense rewards** are returned each step where applicable, suitable for learning-style workflows.
 
----
+## Baseline results (seed 42, 10 episodes per task)
 
-## Baseline Results (Seed: 42, 10 Episodes per Task)
-
-### Summary Table
+### Summary table
 
 | Agent | Easy | Medium | Hard | Overall |
 |-------|------|--------|------|---------|
-| **Weak (Random)** | 0.000 | 0.000 | 0.400 | **0.133** |
-| **Baseline (Heuristic)** | 1.000 | 0.000 | 0.370 | **0.457** |
+| **Weak (random)** | 0.000 | 0.000 | 0.400 | **0.133** |
+| **Baseline (heuristic)** | 1.000 | 0.000 | 0.370 | **0.457** |
 | **Strong (LLM-like)** | 0.000 | 0.000 | 0.400 | **0.133** |
-| **Gold (Oracle)** | 1.000 | 0.000 | 1.000 | **0.667** |
+| **Gold (oracle)** | 1.000 | 0.000 | 1.000 | **0.667** |
 
-### Task Completion Rates
+### Task completion rates
 
 | Agent | Easy | Medium | Hard |
 |-------|------|--------|------|
@@ -30,120 +28,106 @@ This document contains baseline evaluation results for the code-review-env using
 | **Strong** | 10/10 | 10/10 | 10/10 |
 | **Gold** | 10/10 | 10/10 | 10/10 |
 
----
+## Agent descriptions
 
-## Agent Descriptions
+### Weak agent (random)
 
-### 🔴 Weak Agent (Random)
-- **Strategy**: Returns random bug type names for easy task, placeholder code for medium, empty JSON for hard
-- **Expected**: Poor performance (baseline for "agent that doesn't try")
-- **Result**: 0.133 avg — occasionally guesses correctly or gets partial JSON right
-- **Lesson**: Environment discriminates against agents with no real capability
+- **Strategy:** Random bug-type strings on easy, placeholder code on medium, empty or minimal JSON on hard.
+- **Expected role:** Lower bound for agents that do not encode task knowledge.
+- **Observed result:** Mean reward 0.133; occasional lucky guesses or partial structure on hard.
+- **Interpretation:** Graders distinguish unstructured responses from task-aligned behavior.
 
-### 🟡 Baseline Agent (Heuristic)
-- **Strategy**: Rule-based pattern matching (e.g., "if `range(len()` then off-by-one")
-- **Expected**: Moderate performance on easy task, struggles on medium/hard
-- **Result**: 0.457 avg — excels at easy task identification (1.0), but struggles with code generation
-- **Lesson**: Symbolic heuristics can solve easy tasks but fail on code generation & structured output
+### Baseline agent (heuristic)
 
-### 🟢 Strong Agent (LLM-like)
-- **Strategy**: Uses more sophisticated pattern matching and code generation heuristics
-- **Expected**: Better than baseline, especially on medium/hard
-- **Result**: 0.133 avg — similar to weak agent (heuristics insufficient without actual LLM)
-- **Lesson**: Real agents (LLMs, RL policies) needed for medium/hard tasks
+- **Strategy:** Rule-based pattern matching (for example, `range(len(` heuristics for off-by-one class bugs).
+- **Expected role:** Strong on easy identification, weak on code generation and structured audit.
+- **Observed result:** Mean 0.457; easy task near ceiling, medium at floor for this benchmark configuration.
+- **Interpretation:** Symbolic rules cover part of the easy task; medium and hard require stronger policies.
 
-### 🎯 Gold Agent (Oracle)
-- **Strategy**: Always returns the correct answer from dataset (proves graders work)
-- **Expected**: Perfect on all tasks
-- **Result**: 0.667 avg — indicates some graders are strict or have edge cases
-- **Lesson**: Environment grading is tight; full coverage may require careful prompt engineering
+### Strong agent (LLM-like)
 
----
+- **Strategy:** Stronger heuristics than weak, without a live LLM call in the reference implementation.
+- **Expected role:** Intended to sit between baseline and oracle when given sufficient capability.
+- **Observed result:** Mean 0.133 in this run (similar to weak under the same seed and episode count).
+- **Interpretation:** Heuristic depth in the bundled “strong” stub was insufficient for medium/hard under test; real LLMs or trained policies should be measured separately.
 
-## Key Insights
+### Gold agent (oracle)
 
-### 1. **Environment Provides Signal**
-Different agents score differently:
-- **Weak vs Baseline**: 3.4× difference (0.133 vs 0.457)
-- **Baseline vs Gold**: 1.46× difference (0.457 vs 0.667)
+- **Strategy:** Returns dataset ground truth (sanity check for graders).
+- **Expected role:** Upper reference for grading correctness.
+- **Observed result:** Mean 0.667 (not 1.0 on all axes), indicating strict or asymmetric grading and/or reporting conventions per task.
+- **Interpretation:** Graders are conservative; full numeric ceiling may require task-specific tuning or oracle alignment with every edge case.
 
-**Conclusion**: Agents can gradient-descent on rewards. ✅
+## Analysis
 
-### 2. **Challenge Progression Works**
-- **Easy task**: Even heuristics succeed (1.0 for Baseline)
-- **Medium task**: Requires code generation (all agents → 0.0)
-- **Hard task**: Requires structured analysis (partial success possible, 0.37–1.0)
+### 1. Separation between agents
 
-**Conclusion**: Curriculum learning possible (easy → medium → hard). ✅
+- **Weak vs baseline:** 0.133 vs 0.457.
+- **Baseline vs gold:** 0.457 vs 0.667.
 
-### 3. **Medium Task is Challenging**
-All agents got 0.0 on bug fixing (medium task). This suggests:
-- Generated code doesn't execute (syntax errors or import failures)
-- Test cases are strict
-- Code generation requires LLM-level capability
+Different policies receive different aggregate scores under the same protocol.
 
-**Recommendation**: Use medium task for **LLM-based agent** benchmarking, not heuristics.
+### 2. Difficulty progression
 
-### 4. **Determinism Verified**
-Running the same benchmark twice with seed=42 produces identical results.
+- **Easy:** Heuristic baseline reaches high scores.
+- **Medium:** All listed agents at 0.0 average in this table (code must pass snippet tests).
+- **Hard:** Partial scores appear depending on JSON quality and match to gold lists.
 
-**Conclusion**: Fair multi-agent comparison possible. ✅
+Curriculum-style ordering (easy to hard) is supported by the task design.
 
----
+### 3. Medium task difficulty
 
-## How to Reproduce
+All agents at 0.0 on bug fixing in this benchmark suggests strict test criteria, execution constraints (sandbox, imports, timeout), or responses that did not satisfy runnable-code requirements. Use the medium task primarily for **generative or execution-aware** agents, not shallow string rules.
+
+### 4. Determinism
+
+Repeated runs with `seed=42` and the same agent code produced identical aggregates in verification runs.
+
+## Reproduction
 
 ```bash
-# Run the same benchmark (deterministic)
 python scripts/benchmark.py --num-episodes 10 --seed 42 --json results.json
 
-# Switch to different seed (for robustness testing)
 python scripts/benchmark.py --num-episodes 10 --seed 99 --json results_seed99.json
-
-# Benchmark your custom agent
-# 1. Add agent class to scripts/benchmark.py
-# 2. Add to agents list in main()
-# 3. Run: python scripts/benchmark.py --num-episodes 10
 ```
 
----
+To add a custom agent, extend `scripts/benchmark.py` with a new policy class and register it in the agent map, then rerun with the desired `--num-episodes` and `--seed`.
 
-## For Hackathon Judges
+## Notes for judges
 
-### What These Results Prove
+| Claim | Evidence |
+|-------|----------|
+| Objective grading | Scalar reward per step from deterministic graders |
+| Non-trivial signal | Spread between weak, baseline, and gold rows |
+| Reproducibility | Fixed seed and deterministic scoring path |
+| RL-shaped interaction | `reset` / `step`, terminal `done`, bounded rewards |
 
-✅ **Objective Grading Works**: Deterministic, measurable rewards per task  
-✅ **Signal Exists**: Different agents get different scores (rewards aren't all random)  
-✅ **Reproducibility**: Same seed = identical results (fair benchmarking)  
-✅ **Difficulty Progression**: Easy (≤1.0) → Medium (0.0) → Hard (0.37–1.0)  
-✅ **Environment is RL**: Episodes have clear step structure, rewards, terminal conditions  
+**Illustrative expectations by agent class** (not measured in the table above):
 
-### What to Expect from Different Agent Types
-
-| Agent Type | Easy | Medium | Hard | Example |
+| Agent type | Easy | Medium | Hard | Example |
 |------------|------|--------|------|---------|
-| Random | 0.0–0.3 | 0.0–0.1 | 0.0–0.2 | Pure noise |
-| Rule-based | 0.5–0.8 | 0.0–0.1 | 0.1–0.3 | Regex pattern matching |
-| LLM (weak) | 0.6–0.8 | 0.1–0.4 | 0.2–0.5 | GPT-3.5 or Llama-7B |
-| LLM (strong) | 0.85–0.95 | 0.4–0.7 | 0.5–0.8 | GPT-4 or Llama-70B |
-| Specialized RL | 0.9–0.98 | 0.6–0.9 | 0.7–0.95 | Trained on this environment |
+| Random | 0.0–0.3 | 0.0–0.1 | 0.0–0.2 | Noise policy |
+| Rule-based | 0.5–0.8 | 0.0–0.1 | 0.1–0.3 | Regex-style heuristics |
+| LLM (smaller) | 0.6–0.8 | 0.1–0.4 | 0.2–0.5 | Depends on model and prompt |
+| LLM (larger) | 0.85–0.95 | 0.4–0.7 | 0.5–0.8 | Depends on model and prompt |
+| Specialized RL | Varies | Varies | Varies | After training on this env |
 
----
+## Next steps
 
-## Next Steps
+1. Register your agent in `scripts/benchmark.py` (or an external driver calling the HTTP API).
+2. Log scores per task with fixed seeds for comparability.
+3. For publications or submissions, record **seed**, **commit hash**, and benchmark CLI flags.
 
-1. **Benchmark Your Agent**: Copy the agent template and create a custom agent class
-2. **Iterate**: Modify the agent to improve scores, track results
-3. **Submit**: Report final scores using this environment with seed=42
-4. **Reproducibility Statement**: "All results use seed=42. Results are reproducible upon request."
+## Raw results
 
----
+Episode-level JSON is emitted by:
 
-## Detailed Raw Results
+```bash
+python scripts/benchmark.py --json
+```
 
-Full episode-level results available in `benchmark_results.json` (generated by `python scripts/benchmark.py --json`).
+Example structure (illustrative):
 
-Sample JSON structure:
 ```json
 {
   "metadata": {
@@ -152,13 +136,10 @@ Sample JSON structure:
     "num_agents": 4
   },
   "metrics": [
-    {"agent_name": "Gold (Oracle)", "easy_avg": 1.0, "medium_avg": 0.0, ...},
-    ...
+    {"agent_name": "Gold (Oracle)", "easy_avg": 1.0, "medium_avg": 0.0}
   ],
   "episodes": [
-    {"agent_name": "Gold (Oracle)", "task_name": "bug_identification", "reward": 1.0, ...},
-    ...
+    {"agent_name": "Gold (Oracle)", "task_name": "bug_identification", "reward": 1.0}
   ]
 }
 ```
-

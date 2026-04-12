@@ -1,44 +1,54 @@
----
-title: Code Review Agent — OpenEnv
-description: RL environment for training AI agents on Python code review
-sdk: docker
-app_port: 7860
-models:
-  - Qwen/Qwen2.5-72B-Instruct
----
-
 # Code Review Agent — OpenEnv RL Benchmark
 
 > **An OpenEnv RL environment for training and benchmarking AI agents on Python code review.**
 
-## 🔥 Quick Links
+## Problem Statement (Real-world)
 
-### 🚀 **[Live Demo on HF Space](https://BugHunter28-code-review-env.hf.space)** ← Try it now!
+Modern code review tools rarely expose **structured, explainable training signals** for automated agents. Teams mix linters, ad-hoc PR comments, and opaque model scores—making it hard to **train, compare, and audit** agents that assist with real review work.
+
+This environment simulates **human-like Python code review** as an interactive loop: an agent reads curated snippets, acts (name the bug, submit a fix, or emit a structured audit), and receives a **dense numeric reward** after each `step()`—so you can benchmark policies, run curriculum learning, and measure **partial progress** instead of a single pass/fail bit.
+
+## Use Cases
+
+- **Automated code review assistants** — reward-shaped feedback for models that suggest fixes and findings  
+- **CI/CD and merge gates** — compare agents on the same tasks with a stable, programmatic rubric  
+- **Security-focused workflows** — progression from bug naming → correct code → multi-category audit JSON  
+- **Developer productivity tooling** — reproducible head-to-head evaluation of review agents  
+- **Education and hiring** — consistent tasks, graders, and difficulty tiers (easy → medium → hard)
+
+## What Makes This Unique?
+
+- **Multi-dimensional grading (hard task)** — separate signals for bugs, security issues, and style, then a fused score  
+- **Real-world-style scenarios** — hand-authored snippets with tests and gold reviews—not toy game MDPs  
+- **Deterministic grading** — same response on the same snippet yields the same reward (stochasticity only from **which** snippet is drawn unless you fix `seed` on `reset`)  
+- **Designed for agent training** — dense rewards every step, partial credit on medium/hard, clear episode boundaries  
+- **OpenEnv + HF Space ready** — typed observations/actions, `openenv.yaml`, Docker, and a baseline `inference.py` that passed Phase-2 validation
+
+## Architecture
+
+| Layer | Role |
+|------|------|
+| **OpenEnv core** | `CodeReviewEnvironment` — `reset` / `step` / `state` in `server/environment.py` |
+| **HTTP API** | FastAPI app — `/reset`, `/step`, `/health`, `/tasks` in `server/app.py` |
+| **Task graders** | `tasks/task_easy.py`, `task_medium.py`, `task_hard.py` |
+| **Reward safety** | `score_clamp.py` keeps every returned reward strictly inside `(0, 1)` for evaluator compatibility |
+| **Baseline agent** | `inference.py` — OpenAI-compatible client, Space URL via `PING_URL`, strict `[START]`/`[STEP]`/`[END]` stdout |
+
+## Quick links
+
+### [Live demo on Hugging Face Space](https://BugHunter28-code-review-env.hf.space)
 
 | | |
 |---|---|
-| 📊 **[Benchmark Results](EVALUATION_RESULTS.md)** | Baseline agent scores |
-| 📖 **[Full Documentation](.)** | Complete guide |
-| 🐙 **[GitHub Source](https://github.com/Rajath2005/code-review-env)** | Master branch |
+| **[Benchmark results](EVALUATION_RESULTS.md)** | Baseline agent scores |
+| **[Repository documentation](README.md)** | Complete guide |
+| **[GitHub source](https://github.com/Rajath2005/code-review-env)** | Default branch |
 
 ---
 
-## 🔥 The Problem
+## The RL loop (agent perspective)
 
-Code review is the hardest part of shipping software fast — and there is **no standard RL environment** to train, compare, and benchmark agents for real code review. Tools like GitHub Copilot Review and CodeRabbit hint at the massive demand.
-
-This environment provides:
-- ✅ **3 difficulty levels** (identification → fixing → full review)
-- ✅ **Objective grading** (dense rewards, not sparse end-of-episode)
-- ✅ **Real-world dataset** (32+ hand-crafted Python snippets with test cases)
-- ✅ **OpenEnv compliant** (standard RL training loop)
-- ✅ **Live demo** (Hugging Face Spaces)
-
----
-
-## 🎯 The RL Loop (Agent Perspective)
-
-**This is a Markov Decision Process**, not just a tool. Here's how agents interact:
+The environment is a **Markov decision process**: agents interact as follows.
 
 ```
 state = env.reset(task_name="bug_identification")
@@ -52,14 +62,44 @@ for step in range(max_steps):
         break
 ```
 
-**Key**: At each step, the agent receives:
-- 📝 **Observation**: code snippet + task instructions
-- 💰 **Reward** (0.0–1.0): immediate signal on how well it did
-- ✋ **Done**: whether episode ended (agent solved task or hit max steps)
+At each step, the agent receives:
+- **Observation**: code snippet and task instructions
+- **Reward** (strictly inside `(0, 1)` in API responses): immediate signal on response quality
+- **Done**: whether the episode ended (task solved or maximum steps reached)
 
 ---
 
-## 📊 State | Action | Reward (Formal Definition)
+## Reward Design
+
+The reward function is **task-specific** and always **normalized** so deployed APIs and baseline logs stay strictly inside the open unit interval (see `score_clamp.py`).
+
+What each task emphasizes:
+
+| Signal | Easy | Medium | Hard |
+|--------|------|--------|------|
+| **Bug / logic detection** | Primary (name the bug type) | Implicit in passing tests | ~40% weight on structured bug findings |
+| **Correctness / repair** | — | Primary (fraction of tests passed) | — |
+| **Security issues** | — | — | ~35% via `security_issues` list vs gold |
+| **Style / quality** | — | — | ~15% via `style_violations` list vs gold |
+| **Response completeness** | Aliases + synonym map + partial overlap | Runnable code + test coverage | JSON validity, keys, list shape, ordering |
+
+**Hard-task fusion**: category scores are weighted, an ordering bonus is applied, then **penalties** cap how much missing critical items or likely hallucinations can reduce the total—before the final clamp.
+
+## Example Output (`inference.py` stdout)
+
+Automated checks parse **exact** stdout lines. The baseline prints (illustrative):
+
+```text
+[START] task=bug_identification env=code-review-env model=Qwen/Qwen2.5-72B-Instruct
+[STEP] step=1 action="off-by-one error" reward=0.9900 done=true error=null
+[END] success=true steps=1 score=0.9900 rewards=0.9900
+```
+
+The script ends with a **single JSON object** on stdout, e.g. `{"task_1":0.85,"task_2":0.62,"task_3":0.41}`, with each value strictly between **0** and **1**.
+
+---
+
+## State, action, and reward (formal definition)
 
 ### **State Space** — What the agent sees:
 
@@ -69,7 +109,7 @@ class CodeReviewObservation(Observation):
     task_name: str               # "bug_identification" | "bug_fixing" | "full_review"
     instructions: str            # Task-specific instructions
     feedback: Optional[str]      # Grader feedback from previous step (null on first)
-    reward: float                # Reward from previous step (0.0 on reset)
+    reward: float                # Reward from previous step (small positive default on reset)
     done: bool                   # Episode complete? (False on reset)
 ```
 
@@ -82,25 +122,25 @@ class CodeReviewAction(Action):
 
 ### **Reward Function** — How agents are scored:
 
-| Task | Reward Signal | Interpretation |
-|------|---------------|-----------------|
-| **Bug ID (Easy)** | 0.0 / 0.7 / 1.0 | Wrong / Partial keyword match / Exact or alias |
-| **Bug Fix (Medium)** | 0.0–1.0 | Proportional to test cases passed |
-| **Full Review (Hard)** | 0.0–1.0 | F1-score (precision + recall) per category + severity bonus |
+| Task | Reward signal (conceptual) | After normalization |
+|------|-----------------------------|----------------------|
+| **Bug ID (Easy)** | Wrong / partial overlap / exact or alias | Clamped strictly inside `(0, 1)` |
+| **Bug Fix (Medium)** | Proportional to tests passed (+ syntax/timeout paths) | Same |
+| **Full Review (Hard)** | Weighted category scores + ordering − penalties | Same |
 
-**Dense signals at EVERY step** → stable training, not sparse end-of-episode.
-
----
-
-## 🚀 Live Demo
-
-**Hugging Face Space**: https://BugHunter28-code-review-env.hf.space
-
-Try it: select task → submit answer → see reward immediately.
+**Dense signals at every step** support stable training rather than sparse end-of-episode feedback.
 
 ---
 
-## 📋 Quick Example: One Complete Episode
+## Live demo
+
+**Hugging Face Space:** https://BugHunter28-code-review-env.hf.space
+
+Select a task, submit a response, and inspect the returned reward in the UI or API.
+
+---
+
+## Quick example: one complete episode
 
 **Task**: `bug_identification` (Easy)
 
@@ -116,7 +156,7 @@ observation = env.reset(task_name="bug_identification")
   "task_name": "bug_identification",
   "instructions": "Identify the bug and respond with ONLY the bug type as a short phrase.",
   "feedback": null,
-  "reward": 0.0,
+  "reward": 0.01,
   "done": false
 }
 ```
@@ -133,61 +173,58 @@ observation = env.step(action)
   "code_snippet": "def sum_list(nums):\n    total = 0\n    for i in range(len(nums) + 1):\n        total += nums[i]\n    return total",
   "task_name": "bug_identification",
   "instructions": "Identify the bug and respond with ONLY the bug type as a short phrase.",
-  "feedback": "✅ CORRECT: 'off-by-one error' matches expected bug type",
-  "reward": 1.0,
+  "feedback": "CORRECT: 'off-by-one error' matches expected bug type",
+  "reward": 0.99,
   "done": true
 }
 ```
 
-**Result**: Agent got **1.0 reward** and episode ended. Perfect!
+**Result:** The agent received a high reward (clamped below the upper bound per `score_clamp.py`) and the episode terminated.
 
 ---
 
-## 🎓 Why This Is an RL Environment (Not Just a "Tool")
+## Why this is an RL environment
 
-| Aspect | Why It's RL | Implication |
+| Aspect | Why it is RL | Implication |
 |--------|-----------|------------|
-| **Markov Property** | Current observation fully determines next state | Observable history satisfies MDP assumption ✓ |
+| **Markov property** | Current observation fully determines the next state | Observable state is sufficient for the MDP formulation |
 | **Episode Structure** | Fixed max steps, clear terminal conditions | Agents learn when to stop attempting retry |
 | **Reward Signal** | Exact, partial, and scored outcomes | Dense learning signal (better than pass/fail) |
 | **Generalization** | 32+ diverse snippets, 3 difficulty levels | Curriculum learning + benchmarking possible |
 | **Deterministic Grading** | Same response → same score (reproducible) | Fair multi-agent comparison |
 
-**Bottom line**: You can train an RL policy end-to-end on this environment. It's not a one-shot API; it's an interactive problem-solving loop.
+**Summary:** You can train an RL policy end-to-end on this environment: it is an interactive loop with explicit `reset` / `step` semantics, not a single-request API.
 
 ---
 
-## 📋 Tasks
+## Tasks
 
-Three tasks of increasing difficulty, each with a programmatic grader scoring 0.0 – 1.0.
+Three tasks with **programmatic graders** and increasing scope. Reported rewards are always **strictly between 0 and 1** (never exactly `0.0` or `1.0` at the API boundary).
 
-### Task 1: Bug Identification (Easy)
-The agent receives a buggy Python function. It must identify the **bug type** — a short phrase like `"off-by-one error"` or `"infinite recursion"`.
+### Easy Task — Bug identification (`bug_identification`)
 
-**Reward**:
-- 🟢 **1.0** — Exact match or recognized alias (e.g., "off by one" → "off-by-one error")
-- 🟡 **0.7** — Partial keyword overlap (agent understood the category but phrasing differs)
-- 🔴 **0.0** — Wrong or empty response
+Simulates **triage**: given buggy backend-style Python, the agent must output **only** the bug **type** as a short phrase (e.g. `"off-by-one error"`, `"division by zero"`).
 
-**Dataset**: 10 snippets covering: off-by-one, division by zero, wrong initial value, command injection, infinite recursion, null pointer dereference, list mutation, case sensitivity, resource leak, infinite loop, plus 10 more.
+- **Focus**: Syntax-level mistakes, obvious logic flaws, and naming those patterns consistently with the dataset.  
+- **Signal**: Exact / alias / synonym match → highest band; partial keyword overlap → mid band; wrong or empty → lowest band (then clamped for the API).
 
-### Task 2: Bug Fixing (Medium)
-The agent receives the same buggy snippet. It must return **corrected Python code** that passes all test cases.
+### Medium Task — Bug fixing (`bug_fixing`)
 
-**Reward** (partial credit):
-- 🟢 **1.0** — All test cases pass
-- 🟡 **0.6–0.9** — Majority of test cases pass (proportional: `passed / total`)
-- 🟡 **0.3** — Code runs without syntax error but fails all test cases
-- 🔴 **0.0** — Syntax error or exception on execution
+Simulates **patch review**: the agent must return **complete corrected Python** for the shown function so it passes **snippet-specific unit tests**.
 
-**Example**:
-- 3/4 test cases pass → reward = 0.75
-- 1/4 test cases pass → reward = 0.25
+- **Focus**: Multiple issues can hide in one snippet—logic, structure, and API misuse are reflected in whether tests pass.  
+- **Signal**: Continuous score from **fraction of tests passed**; syntax errors, timeouts, and sandbox failures map to low bands (still strictly inside `(0, 1)`).
 
-**Grading**: Code executed in sandboxed Python namespace. Imports whitelisted (math, re, json, datetime, etc.). Timeout: 2.5 seconds per test.
+### Hard Task — Full code review (`full_review`)
 
-### Task 3: Full Code Review (Hard)
-The agent must produce a **structured JSON review** covering bugs, security issues, and style violations — each ordered by severity.
+Simulates **structured audit**: the agent must emit **JSON** with `bugs`, `security_issues`, and `style_violations`, each item with `line`, `severity`, `description`, ordered by severity within each list.
+
+- **Focus**: Hidden logic issues, **security-relevant** patterns, and **maintainability / style** concerns—closer to how senior review comments read.  
+- **Signal**: Weighted match against gold findings per category, ordering bonus, then capped penalties (see **Reward Design** above).
+
+**Dataset**: 32+ curated snippets—bug type, aliases, fixed code, tests, and gold JSON review per snippet.
+
+**Medium-task execution**: Sandboxed `exec` with a **whitelisted** builtin surface and allowed imports (e.g. `math`, `re`, `json`); per-episode timeout **5s** for the test thread.
 
 **Required output format**:
 ```json
@@ -202,22 +239,15 @@ The agent must produce a **structured JSON review** covering bugs, security issu
 }
 ```
 
-**Reward scoring** (total 1.0):
-- 🎯 **40%** — Bugs found (F1-score: precision + recall on detected bugs)
-- 🎯 **35%** — Security issues found (F1-score on security findings)
-- 🎯 **15%** — Style violations found (F1-score on style findings)
-- 🎯 **10%** — Correct severity ordering (high > medium > low within each category)
+**Category weights (hard task, conceptual 100% before penalties)**  
+*Bugs ≈ 40% · Security ≈ 35% · Style ≈ 15% · Severity ordering ≈ 10%* — see comments in `tasks/task_hard.py` for the exact constants.
 
-**Example**: If agent finds 2/3 bugs correctly, 1/2 security issues, 0/1 style issue, all in correct order:
-- Bugs: (2/3) × 0.40 = 0.27
-- Security: (1/2) × 0.35 = 0.175
-- Style: 0 × 0.15 = 0
-- Ordering: 1.0 × 0.10 = 0.10
-- **Total reward ≈ 0.535**
+**Illustrative decomposition** (numbers before final clamp/penalties):  
+If category match scores normalized to ~2/3 bugs, ~1/2 security, ~0 style, plus full ordering credit, the **unnormalized** blend can land around **0.5+**; the implementation then applies **penalties** and **clamp** so the API never returns a boundary value.
 
 ---
 
-## 📋 Code Snippet Dataset
+## Code snippet dataset
 
 **32 hand-crafted Python snippets**, each covering a distinct real-world bug class:
 
@@ -235,16 +265,16 @@ The agent must produce a **structured JSON review** covering bugs, security issu
 | SQL injection | Security | String formatting in SQL query |
 | ... and 22 more | Various | Real-world Python issues |
 
-**Each snippet includes**:
-- ✅ Buggy code (function definition)
-- ✅ Bug type (canonical name + aliases)
-- ✅ Fixed code (correct implementation)
-- ✅ Test cases (5–10 per snippet with expected outputs)
-- ✅ Full review (expected bugs, security, style findings)
+**Each snippet includes:**
+- Buggy code (function definition)
+- Bug type (canonical name and aliases)
+- Fixed code (reference implementation)
+- Test cases (approximately five to ten per snippet with expected outputs)
+- Full review (expected bugs, security, and style findings)
 
 ---
 
-## 🔍 For Judges: How to Evaluate This Environment
+## Evaluation checklist (judges)
 
 ### **1. Verify It's a Real RL Environment**
 
@@ -266,13 +296,13 @@ curl -X POST http://localhost:7860/step \
   -H "Content-Type: application/json" \
   -d '{"response": "off-by-one error"}'
 
-# Result: {"feedback": "...", "reward": 1.0, "done": true}
+# Result: {"feedback": "...", "reward": 0.99, "done": true}  # exact value clamped in (0,1)
 ```
 
-✅ **Checklist**:
+**Checklist:**
 - [ ] `/reset` returns observation with code_snippet, task_name, instructions
 - [ ] `/step` accepts action and returns reward + feedback + done
-- [ ] Reward is numeric (0.0–1.0), determinate, reproducible
+- [ ] Reward is numeric, strictly inside `(0, 1)`, determinate for fixed snippet + response
 - [ ] Same action → same reward (determinism verified)
 
 ---
@@ -308,16 +338,12 @@ python scripts/benchmark.py --num-episodes 10 --seed 42 --json results.json
 ### **3. Verify Reproducibility**
 
 ```bash
-# Run 1: seed 42
 python scripts/benchmark.py --num-episodes 5 --seed 42
-
-# Run 2: seed 42 (again)
 python scripts/benchmark.py --num-episodes 5 --seed 42
-
-# Should be IDENTICAL scores (down to 3 decimal places)
+# Expect identical aggregate scores when the agent policy is deterministic.
 ```
 
-Guarantees: Same agent → same reward, always. Fair for multi-agent comparison.
+Also run `python validate_inference_format.py` to confirm the **stdout contract** for automated judging.
 
 ---
 
@@ -359,7 +385,7 @@ No external datasets needed; grading is built-in.
 
 ---
 
-## 🔑 Technical Specifications
+## Technical specifications
 
 ### Observation & Action Spaces (Detailed)
 
@@ -370,7 +396,7 @@ class CodeReviewObservation(Observation):
     task_name: str               # "bug_identification" | "bug_fixing" | "full_review"
     instructions: str            # Task-specific instruction text
     feedback: Optional[str]      # Grader feedback from previous step
-    reward: float                # Reward from last step [0.0, 1.0]
+    reward: float                # Reward from last step, strictly inside (0, 1)
     done: bool                   # Episode over?
 ```
 
@@ -386,11 +412,11 @@ class CodeReviewAction(Action):
 **Episode Parameters**:
 - Max steps per episode: **5**
 - Terminal condition: `done=true` when task solved OR max steps reached
-- Reward range: **[0.0, 1.0]** (always valid numeric)
+- Reward range: **open `(0, 1)`** at the API (clamped away from exact 0.0 / 1.0)
 
 ---
 
-## 📁 Project Structure
+## Project structure
 
 ```
 .
@@ -417,7 +443,8 @@ class CodeReviewAction(Action):
 ├── models.py                       # Pydantic models (shared types)
 ├── openenv.yaml                    # OpenEnv metadata
 ├── pyproject.toml                  # Python package config
-├── DEPLOYMENT_SUMMARY.md           # Deployment notes
+├── validate_inference_format.py   # Local check: stdout contract for judges
+├── score_clamp.py                 # Shared strict (0,1) reward clamp
 ├── Dockerfile                      # Docker build for HF Spaces
 ├── run_tests.py                    # Quick test suite
 └── README.md                       # This file
@@ -425,7 +452,7 @@ class CodeReviewAction(Action):
 
 ---
 
-## ▶️ Running Locally
+## Running locally
 
 ### **Quick Start** (Recommended)
 
@@ -437,7 +464,7 @@ pip install -e .
 uvicorn server.app:app --host 0.0.0.0 --port 7860 --reload
 ```
 
-Then open: **http://localhost:7860**
+Then open **http://localhost:7860** in a browser or HTTP client.
 
 ### **With Docker**
 
@@ -448,7 +475,7 @@ docker run -p 7860:7860 code-review-env
 
 ---
 
-## 📊 Benchmarking Your Own Agent
+## Benchmarking your own agent
 
 ### **Run Built-in Benchmark** (3 reference agents)
 
@@ -485,7 +512,7 @@ python scripts/benchmark.py --agent my_custom_agent
 
 ---
 
-## 🧪 Testing
+## Testing
 
 ```bash
 # Quick sanity check
@@ -496,38 +523,36 @@ python run_tests.py --verbose
 ```
 
 Verifies:
-- ✅ All 3 tasks reset correctly
-- ✅ Rewards in valid range [0.0, 1.0]
-- ✅ Test execution sandbox works (for medium task)
-- ✅ JSON parsing (for hard task)
+- All three tasks reset correctly
+- Rewards strictly inside `(0, 1)`
+- Test execution sandbox behavior for the medium task
+- JSON parsing for the hard task
 
 ---
 
-## 🔄 Reproducibility & Determinism
+## Reproducibility
 
-**This environment is fully deterministic**:
+**Grading is deterministic**: for a fixed snippet and a fixed agent response string, the grader returns the **same reward** every time—no random noise inside `task_easy` / `task_medium` / `task_hard`.
 
-✅ **Observation**: Same episode → always same code snippet (by seed)  
-✅ **Reward**: Same response → always same score (no randomness in grading)  
-✅ **Action execution**: Deterministic Python code execution (sandboxed, timeout-protected)
-
-**How to ensure reproducibility**:
+**Episode variety**: unless you fix randomness, `reset()` draws a snippet from the dataset (`random.choice` when no seed is pinned). For **bit-for-bit reproducible** episodes:
 
 ```bash
-# Always specify seed for training runs
+# Benchmark / batch tools accept --seed
 python scripts/benchmark.py --seed 42
 
-# In custom training:
-import random
-random.seed(42)
-env = CodeReviewEnvironment()
+# Environment API (Python)
+from server.environment import CodeReviewEnvironment
+env = CodeReviewEnvironment(seed=42)
+obs = env.reset(task_name="bug_identification", seed=42)
 ```
 
-When submitting results in papers or reports, always state: **"Evaluation uses seed 42. All experiments are reproducible on request."**
+**Inference baseline**: set `PING_URL` to your Space root when running `inference.py` in CI so the same deployment is hit every run.
+
+For publications or submissions, state explicitly: **seed values** and **commit hash** used for tables.
 
 ---
 
-## ✨ Key Design Decisions
+## Key design decisions
 
 | Decision | Rationale | Trade-off |
 |----------|-----------|-----------|
@@ -539,7 +564,7 @@ When submitting results in papers or reports, always state: **"Evaluation uses s
 
 ---
 
-## 📚 References
+## References
 
 - **OpenEnv Spec**: https://github.com/openenv-dev/openenv-core
 - **Hugging Face Spaces**: https://huggingface.co/docs/hub/spaces
@@ -547,14 +572,31 @@ When submitting results in papers or reports, always state: **"Evaluation uses s
 
 ---
 
-## 📝 License
+## Future Work
+
+- **Live GitHub / PR integration** — stream real diffs into the same `Observation` schema  
+- **Multi-language reviews** — TypeScript, Go, or Rust snippets with parallel grader interfaces  
+- **LLM-in-the-loop grading** — ensemble or critic models on top of deterministic rubrics  
+- **Collaborative agents** — multi-turn review threads with tool use (linter, test runner)  
+- **Curriculum schedules** — automatic promotion easy → medium → hard by policy performance
+
+## License
 
 MIT License — See LICENSE file for details.
 
 ---
 
-## 📧 Questions?
+## Additional documentation
 
-- **Report bugs**: Open an issue on GitHub
-- **Discuss features**: Use Discussions tab
-- **Live demo**: https://BugHunter28-code-review-env.hf.space
+| File | Purpose |
+|------|---------|
+| [TEST_GUIDE.md](TEST_GUIDE.md) | Manual testing scenarios and answer formats |
+| [EVALUATION_RESULTS.md](EVALUATION_RESULTS.md) | Baseline agent numbers and analysis |
+| [HOW_TO_CONFIGURE_HF_SPACE.md](HOW_TO_CONFIGURE_HF_SPACE.md) | Space secrets (`HF_TOKEN`, `API_BASE_URL`, …) |
+| [README_HF_SPACE.md](README_HF_SPACE.md) | Hugging Face Space README: required YAML (`title`, `description`, `sdk`, `app_port`, `models`) and short introduction; use as the Space root `README.md` when deploying |
+
+## Support
+
+- **Issues:** [GitHub Issues](https://github.com/Rajath2005/code-review-env/issues)
+- **Discussions:** GitHub Discussions on the same repository
+- **Live demo:** [code-review-env on Hugging Face Space](https://BugHunter28-code-review-env.hf.space)

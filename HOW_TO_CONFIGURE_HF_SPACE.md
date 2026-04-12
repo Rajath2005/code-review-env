@@ -1,27 +1,30 @@
-# 🎯 How to Configure HF Space Links & Description
+# Configuring Hugging Face Space links and description
 
-## Quick Answer: Where to Put Links
+This document describes where Space metadata and links appear, and how to align them with the repository.
 
-Your HF Space has **3 places** where links appear:
+## Where links and copy appear
 
-### 1. 📄 **README.md** (Top Priority - Main Description)
-This is what everyone sees first. Edit your README.md:
+### 1. Space README (`README.md` at the Space root)
+
+Primary visible description. Use [README_HF_SPACE.md](README_HF_SPACE.md) as the Space-facing README, or merge its frontmatter and body into the Space repository root `README.md`.
+
+Example excerpt:
 
 ```markdown
 # Code Review Agent — OpenEnv
 
-🚀 **[Live Demo](https://BugHunter28-code-review-env.hf.space)** ← Try it now!
+**Live demo:** https://BugHunter28-code-review-env.hf.space
 
-[Source Code](https://github.com/Rajath2005/code-review-env) | [Docs](https://github.com/Rajath2005/code-review-env)
+[Source](https://github.com/Rajath2005/code-review-env)
 ```
 
-### 2. 🏷️ **Tags** (Side Panel)
-Edit your `README.md` YAML frontmatter:
+### 2. README YAML frontmatter (side panel)
+
+Tags and card styling are often defined at the top of the Space `README.md`:
 
 ```yaml
 ---
 title: Code Review Agent
-emoji: 🧠
 colorFrom: blue
 colorTo: green
 sdk: docker
@@ -33,171 +36,63 @@ tags:
 ---
 ```
 
-### 3. ⚙️ **app.yaml** (Advanced Configuration)
-Create this file in your repo root for advanced settings:
+Optional Hugging Face fields (for example `emoji`) may be added per [Hub documentation](https://huggingface.co/docs/hub/spaces-config-reference).
+
+### 3. `app.yaml` (optional)
+
+For advanced Space configuration, add `app.yaml` at the repository root:
 
 ```yaml
 title: Code Review Agent — OpenEnv
-description: Interactive RL environment for Python code review. Try the live demo!
+description: Interactive RL environment for Python code review with a live demo.
 sdk: docker
 app_port: 7860
 models:
   - url: https://BugHunter28-code-review-env.hf.space
-    description: Live Demo
+    description: Live demo
 ```
 
----
+## Space settings (web UI)
 
-## Step-by-Step: Add Links to Your HF Space
-
-### **Step 1: Update Main README (✅ Already Done)**
-Your main `README.md` now has prominent links at the top.
-
-### **Step 2: Configure Space via Web UI**
-1. Go to: https://huggingface.co/spaces/BugHunter28/code-review-env/settings
-2. Scroll to "About"
-3. Add this description:
+1. Open Space settings: https://huggingface.co/spaces/BugHunter28/code-review-env/settings
+2. Under **About**, set a short description, for example:
 
 ```
-🚀 Interactive RL environment for Python code review
+Interactive RL environment for Python code review.
 
-Try Live Demo: https://BugHunter28-code-review-env.hf.space
+Live demo: https://BugHunter28-code-review-env.hf.space
 
-3 Tasks: Bug ID (Easy) | Bug Fix (Medium) | Full Review (Hard)
+Tasks: bug identification (easy), bug fixing (medium), full structured review (hard).
 
-Deterministic env with ~32 code snippets and reward grading.
+Deterministic grading on 32+ snippets; rewards in (0, 1).
 
-📖 GitHub: https://github.com/Rajath2005/code-review-env
+GitHub: https://github.com/Rajath2005/code-review-env
 ```
 
-### **Step 3: Add Metadata (Optional)**
-In your repo, create `app.yaml`:
+## Page layout (conceptual)
 
-```yaml
-title: Code Review Agent
-description: OpenEnv RL environment for Python code review - bug identification, fixing, and structured review
-sdk: docker
-app_port: 7860
-tags: [openenv, reinforcement-learning, code-review]
-models:
-  - url: https://BugHunter28-code-review-env.hf.space
-    name: Live Demo
-```
+| Area | Content source |
+|------|----------------|
+| Main column | Rendered README from the Space repository |
+| Side panel | Tags, optional `models` from `app.yaml`, About text from settings |
 
----
+## Recommended checklist
 
-## 📊 What Links Show Where
+1. Push an updated Space `README.md` (frontmatter + body) from this repo’s [README_HF_SPACE.md](README_HF_SPACE.md) when appropriate.
+2. Confirm the Space URL responds: https://BugHunter28-code-review-env.hf.space
+3. Optionally sync the **About** field in Space settings with the template above.
+4. Optionally add `app.yaml` if you need explicit `app_port` or **Models** entries.
 
-```
-HF Space Page Structure:
+## Verifying static assets and API
 
-┌─────────────────────────────────────────────┐
-│                                             │
-│  Space Title: Code Review Agent            │  ← Title
-│  ⭐ Like  💬 Comments                      │
-│                                             │
-├──────────────────┬──────────────────────────┤
-│                  │                          │
-│  README Content  │  📊 Side Panel:         │
-│  (from .md file) │  - Tags                 │
-│                  │  - Models (if app.yaml) │
-│  🚀 Links here   │  - About                │
-│                  │  - License              │
-│                  │  - Links (if specified) │
-│                  │                          │
-└──────────────────┴──────────────────────────┘
-```
-
----
-
-## ✅ What You Should Do Right Now
-
-1. ✅ Push the updated README (with links) - **Already done**
-2. ⬜ Go to Settings: https://huggingface.co/spaces/BugHunter28/code-review-env/settings
-3. ⬜ Update the "About" description with:
-   ```
-   🚀 Live Demo: https://BugHunter28-code-review-env.hf.space
-   📖 GitHub: https://github.com/Rajath2005/code-review-env
-   ```
-
----
-
-## 🎨 Pro Tips
-
-### Emoji Guide (What Works in Descriptions)
-```
-🚀 Launch/Demo
-📍 Location/Link
-🐙 GitHub
-📊 Data/Results
-🎯 Goal/Target
-⚡ Quick/Fast
-🔧 Setup/Config
-📖 Documentation
-🧠 AI/ML
-```
-
-### Perfect HF Space Description Example
-
-```
-🧠 OpenEnv RL Environment for Code Review
-
-🚀 Live Demo: https://BugHunter28-code-review-env.hf.space
-📖 GitHub: https://github.com/Rajath2005/code-review-env/blob/master
-
-Three Tasks:
-🟢 Bug ID (Easy) - Name the bug
-🟡 Bug Fix (Medium) - Write corrected code  
-🔴 Full Review (Hard) - JSON audit
-
-Features:
-✅ Deterministic reward grading
-✅ 32+ real-world Python snippets
-✅ Dense training signals
-✅ Reproducible evaluation (seed=42)
-
-Try the UI or use API endpoints directly!
-```
-
----
-
-## 📱 How It Looks to Judges
-
-### **What They See First:**
-```
-┌─ Code Review Agent ─────────────────────────────┐
-│ Interactive RL environment for Python code review
-│
-│ 🚀 Live Demo: https://BugHunter28-code-review-env.hf.space
-│ 📖 GitHub: https://github.com/Rajath2005/code-review-env
-│
-│ [Reset]  [Start Review]        Task: [selector]
-│
-│ Code Snippet ▼                Result ▼
-│ ...                            Reward: 1.0
-│                               Status: ✅
-└─────────────────────────────────────────────────┘
-
-Right side panel:
-├─ Tags: openenv, rl, code-review
-├─ Models: 1
-├─ Created: 2026-04-08
-└─ About:
-   🚀 Live Demo: https://BugHunter28-code-review-env.hf.space
-```
-
----
-
-## ⚡ One More Thing: Are Static Files Working?
-
-Test in browser console:
+In the browser developer tools console:
 
 ```javascript
-// Open DevTools (F12), go to Console tab, paste:
 fetch('/health').then(r => r.json()).then(console.log)
 ```
 
-You should see:
+Expected shape:
+
 ```json
 {
   "status": "ok",
@@ -206,15 +101,11 @@ You should see:
 }
 ```
 
-If you see an error, the Space rebuild is still in progress (wait 2-3 min).
-
----
+If the request fails, wait for the Space build to finish or inspect build logs on Hugging Face.
 
 ## Summary
 
-✅ Links in README - **Already done**  
-⬜ Test at https://BugHunter28-code-review-env.hf.space - **Try it!**  
-⬜ Update Space "About" - **Optional but recommended**  
-⬜ Create app.yaml - **Advanced, skip for now**
-
-**Everything is ready for submission!** 🎯
+- README (with YAML) drives the main Space page and side metadata.
+- Space **About** is edited in the Hugging Face UI.
+- `app.yaml` is optional for additional Hub configuration.
+- Use `/health` to confirm the API is reachable after deployment.

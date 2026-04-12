@@ -1,15 +1,19 @@
 """
 Task: Bug Fixing (Medium)
 --------------------------
-Agent receives a buggy Python snippet.
-Agent must respond with the CORRECTED complete function.
-Grader executes the fixed code against test cases.
+Real-world-style scenario: the agent must return a **complete fixed** Python function
+that satisfies the snippet's bundled unit tests (same spirit as CI test gates).
 
-Scoring (partial credit):
-  1.0  — all test cases pass
-  0.6–0.9 — majority of test cases pass (proportional)
-  0.3  — code runs without error but fails all test cases
-  0.0  — code raises an exception / doesn't compile
+Scoring (partial credit; all branches return clamp_score so rewards stay strictly inside (0,1)):
+  ~1.0  — all tests pass
+  mid   — proportional to passed/total when execution succeeds
+  low   — valid parse but no tests passed / no tests defined for snippet
+  floor — syntax error, timeout, sandbox failure, or missing function (mapped up from raw 0)
+
+Edge cases handled in run_medium_task:
+  - markdown ``` fences stripped from the agent response
+  - division-by-zero avoided when total tests is 0
+  - execution isolated: limited builtins, import allow-list, thread timeout
 """
 
 import ast
@@ -179,7 +183,7 @@ def run_medium_task(agent_response: str, snippet_id: int) -> tuple[float, str, b
     Grade the agent's bug fix.
 
     Returns:
-        reward (float): 0.01 – 0.99 (strictly within open interval)
+        reward (float): strictly within open interval (0, 1) after clamp_score
         feedback (str): explanation
         done (bool): True once graded
     """
