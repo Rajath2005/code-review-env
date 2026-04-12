@@ -1,9 +1,13 @@
-title: Code Review Agent — OpenEnv
+title: Code Review Agent — OpenEnv RL Benchmark
+emoji: 🧠
+colorFrom: blue
+colorTo: green
 description: RL environment for training AI agents on Python code review
 sdk: docker
 docker:
   dockerfile: ./Dockerfile
 app_port: 7860
+pinned: false
 env:
   - name: API_BASE_URL
     description: The API endpoint for the LLM
