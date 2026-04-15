@@ -598,10 +598,23 @@ MIT License — See LICENSE file for details.
 
 ---
 
+## Contributing
+
+Contributions are welcome. See [contribute.md](contribute.md) for setup, testing, and pull request guidelines.
+
+Community standards and policies:
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
+
+---
+
 ## Additional documentation
 
 | File | Purpose |
 |------|---------|
+| [contribute.md](contribute.md) | Contributor setup and pull request workflow |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community participation standards |
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting and security policy |
 | [TEST_GUIDE.md](TEST_GUIDE.md) | Manual testing scenarios and answer formats |
 | [EVALUATION_RESULTS.md](EVALUATION_RESULTS.md) | Baseline agent numbers and analysis |
 | [HOW_TO_CONFIGURE_HF_SPACE.md](HOW_TO_CONFIGURE_HF_SPACE.md) | Space secrets (`HF_TOKEN`, `API_BASE_URL`, …) |
